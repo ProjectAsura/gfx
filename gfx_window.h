@@ -29,13 +29,19 @@ SOFTWARE.
 //! Window management.
 //!
 
-class GfxWindow { friend class GfxWindowInternal; uint64_t handle; HWND hwnd; public:
-                  inline bool operator ==(GfxWindow const &other) const { return handle == other.handle; }
-                  inline bool operator !=(GfxWindow const &other) const { return handle != other.handle; }
-                  inline GfxWindow() { memset(this, 0, sizeof(*this)); }
-                  inline operator bool() const { return !!handle; }
-                  inline HWND getHWND() const { return hwnd; }
-                  inline operator HWND() const { return hwnd; } };
+class GfxWindow
+{
+    friend class GfxWindowInternal;
+    uint64_t    handle;
+    HWND        hwnd;
+public:
+    inline bool operator ==(GfxWindow const &other) const { return handle == other.handle; }
+    inline bool operator !=(GfxWindow const &other) const { return handle != other.handle; }
+    inline GfxWindow() { memset(this, 0, sizeof(*this)); }
+    inline operator bool() const { return !!handle; }
+    inline HWND getHWND() const { return hwnd; }
+    inline operator HWND() const { return hwnd; }
+};
 
 enum GfxCreateWindowFlag
 {
@@ -43,7 +49,13 @@ enum GfxCreateWindowFlag
 };
 typedef uint32_t GfxCreateWindowFlags;
 
-GfxWindow gfxCreateWindow(uint32_t window_width, uint32_t window_height, char const *window_title = nullptr, GfxCreateWindowFlags flags = 0);
+GfxWindow gfxCreateWindowA(uint32_t window_width, uint32_t window_height, char const *window_title = nullptr, GfxCreateWindowFlags flags = 0);
+GfxWindow gfxCreateWindowW(uint32_t window_width, uint32_t window_height, wchar_t const *window_title = nullptr, GfxCreateWindowFlags flags = 0);
+#if defined(UNICODE) || defined(_UNICODE)
+#define gfxCreateWindow     gfxCreateWindowW
+#else
+#define gfxCreateWindow     gfxCreateWindowA
+#endif
 GfxResult gfxDestroyWindow(GfxWindow window);
 
 GfxResult gfxWindowPumpEvents(GfxWindow window);
@@ -80,20 +92,20 @@ public:
     GfxWindowInternal(GfxWindow &window) { window.handle = reinterpret_cast<uint64_t>(this); }
     ~GfxWindowInternal() { terminate(); }
 
-    GfxResult initialize(GfxWindow &window, uint32_t window_width, uint32_t window_height, char const *window_title, GfxCreateWindowFlags flags)
+    GfxResult initializeA(GfxWindow &window, uint32_t window_width, uint32_t window_height, char const *window_title, GfxCreateWindowFlags flags)
     {
         window_title = (!window_title ? "gfx" : window_title);
 
-        WNDCLASSEX
+        WNDCLASSEXA
         window_class               = {};
         window_class.cbSize        = sizeof(window_class);
         window_class.style         = CS_HREDRAW | CS_VREDRAW;
         window_class.lpfnWndProc   = WindowProc;
-        window_class.hInstance     = GetModuleHandle(nullptr);
-        window_class.hCursor       = LoadCursor(nullptr, IDC_ARROW);
+        window_class.hInstance     = GetModuleHandleA(nullptr);
+        window_class.hCursor       = LoadCursorA(nullptr, MAKEINTRESOURCEA(32512));
         window_class.lpszClassName = window_title;
 
-        RegisterClassEx(&window_class);
+        RegisterClassExA(&window_class);
 
         RECT window_rect = { 0, 0, (LONG)window_width, (LONG)window_height };
 
@@ -101,17 +113,61 @@ public:
 
         AdjustWindowRect(&window_rect, window_style, FALSE);
 
-        window_ = CreateWindowEx(0,
+        window_ = CreateWindowExA(0,
                                  window_title,
                                  window_title,
                                  window_style,
                                  CW_USEDEFAULT,
                                  CW_USEDEFAULT,
-                                 window_rect.right - window_rect.left,
+                                 window_rect.right  - window_rect.left,
                                  window_rect.bottom - window_rect.top,
                                  nullptr,
                                  nullptr,
-                                 GetModuleHandle(nullptr),
+                                 GetModuleHandleA(nullptr),
+                                 nullptr);
+
+        SetWindowLongPtrA(window_, GWLP_USERDATA, (LONG_PTR)this);
+
+        ShowWindow(window_, (flags & kGfxCreateWindowFlag_MaximizeWindow) != 0 ? SW_SHOWMAXIMIZED : SW_SHOWDEFAULT);
+
+        window.hwnd = window_;
+
+        return kGfxResult_NoError;
+    }
+
+
+    GfxResult initializeW(GfxWindow &window, uint32_t window_width, uint32_t window_height, wchar_t const *window_title, GfxCreateWindowFlags flags)
+    {
+        window_title = (!window_title ? L"gfx" : window_title);
+
+        WNDCLASSEXW
+        window_class               = {};
+        window_class.cbSize        = sizeof(window_class);
+        window_class.style         = CS_HREDRAW | CS_VREDRAW;
+        window_class.lpfnWndProc   = WindowProc;
+        window_class.hInstance     = GetModuleHandleW(nullptr);
+        window_class.hCursor       = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+        window_class.lpszClassName = window_title;
+
+        RegisterClassExW(&window_class);
+
+        RECT window_rect = { 0, 0, (LONG)window_width, (LONG)window_height };
+
+        DWORD const window_style = WS_OVERLAPPEDWINDOW;
+
+        AdjustWindowRect(&window_rect, window_style, FALSE);
+
+        window_ = CreateWindowExW(0,
+                                 window_title,
+                                 window_title,
+                                 window_style,
+                                 CW_USEDEFAULT,
+                                 CW_USEDEFAULT,
+                                 window_rect.right  - window_rect.left,
+                                 window_rect.bottom - window_rect.top,
+                                 nullptr,
+                                 nullptr,
+                                 GetModuleHandleW(nullptr),
                                  nullptr);
 
         SetWindowLongPtrA(window_, GWLP_USERDATA, (LONG_PTR)this);
@@ -263,13 +319,29 @@ private:
     }
 };
 
-GfxWindow gfxCreateWindow(uint32_t window_width, uint32_t window_height, char const *window_title, GfxCreateWindowFlags flags)
+GfxWindow gfxCreateWindowA(uint32_t window_width, uint32_t window_height, char const *window_title, GfxCreateWindowFlags flags)
 {
     GfxResult result;
     GfxWindow window = {};
     GfxWindowInternal *gfx_window = new GfxWindowInternal(window);
     if(!gfx_window) return window;  // out of memory
-    result = gfx_window->initialize(window, window_width, window_height, window_title, flags);
+    result = gfx_window->initializeA(window, window_width, window_height, window_title, flags);
+    if(result != kGfxResult_NoError)
+    {
+        window = {};
+        delete gfx_window;
+        GFX_PRINT_ERROR(result, "Failed to create new window");
+    }
+    return window;
+}
+
+GfxWindow gfxCreateWindowW(uint32_t window_width, uint32_t window_height, wchar_t const *window_title, GfxCreateWindowFlags flags)
+{
+    GfxResult result;
+    GfxWindow window = {};
+    GfxWindowInternal *gfx_window = new GfxWindowInternal(window);
+    if(!gfx_window) return window;  // out of memory
+    result = gfx_window->initializeW(window, window_width, window_height, window_title, flags);
     if(result != kGfxResult_NoError)
     {
         window = {};

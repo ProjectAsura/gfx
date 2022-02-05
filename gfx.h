@@ -273,7 +273,74 @@ GfxResult gfxDrawStateSetBlendMode(GfxDrawState draw_state, D3D12_BLEND src_blen
 
 inline GfxResult gfxDrawStateEnableAlphaBlending(GfxDrawState draw_state)
 {
-    return gfxDrawStateSetBlendMode(draw_state, D3D12_BLEND_SRC_ALPHA, D3D12_BLEND_INV_SRC_ALPHA, D3D12_BLEND_OP_ADD, D3D12_BLEND_INV_SRC_ALPHA, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD);
+    return gfxDrawStateSetBlendMode(
+        draw_state,
+        D3D12_BLEND_SRC_ALPHA,
+        D3D12_BLEND_INV_SRC_ALPHA,
+        D3D12_BLEND_OP_ADD,
+        D3D12_BLEND_INV_SRC_ALPHA,
+        D3D12_BLEND_ZERO,
+        D3D12_BLEND_OP_ADD);
+}
+
+inline GfxResult gfxDrawStateSetBlendAdditive(GfxDrawState draw_state)
+{
+    return gfxDrawStateSetBlendMode(
+        draw_state,
+        D3D12_BLEND_SRC_ALPHA,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_OP_ADD,
+        D3D12_BLEND_SRC_ALPHA,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_OP_ADD);
+}
+
+inline GfxResult gfxDrawStateSetBlendSubtract(GfxDrawState draw_state)
+{
+    return gfxDrawStateSetBlendMode(
+        draw_state,
+        D3D12_BLEND_SRC_ALPHA,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_OP_REV_SUBTRACT,
+        D3D12_BLEND_SRC_ALPHA,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_OP_REV_SUBTRACT);
+}
+
+inline GfxResult gfxDraweStateSetBlendMultiply(GfxDrawState draw_state)
+{
+    return gfxDrawStateSetBlendMode(
+        draw_state,
+        D3D12_BLEND_ZERO,
+        D3D12_BLEND_SRC_COLOR,
+        D3D12_BLEND_OP_ADD,
+        D3D12_BLEND_ZERO,
+        D3D12_BLEND_SRC_ALPHA,
+        D3D12_BLEND_OP_ADD);
+}
+
+inline GfxResult gfxDrawStateSetBlendPremultipliedAlpha(GfxDrawState draw_state)
+{
+    return gfxDrawStateSetBlendMode(
+        draw_state,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_INV_SRC_ALPHA,
+        D3D12_BLEND_OP_ADD,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_INV_SRC_ALPHA,
+        D3D12_BLEND_OP_ADD);
+}
+
+inline GfxResult gfxDrawStateSetBlendScreen(GfxDrawState draw_state)
+{
+    return gfxDrawStateSetBlendMode(
+        draw_state,
+        D3D12_BLEND_DEST_COLOR,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_OP_ADD,
+        D3D12_BLEND_DEST_ALPHA,
+        D3D12_BLEND_ONE,
+        D3D12_BLEND_OP_ADD);
 }
 
 //!
@@ -296,11 +363,15 @@ public:
     , vs(nullptr)
     , gs(nullptr)
     , ps(nullptr)
+    , as(nullptr)
+    , ms(nullptr)
     {}
     char const* cs;
     char const* vs;
     char const* gs;
     char const* ps;
+    char const* as;
+    char const* ms;
 };
 
 GfxProgram gfxCreateProgram(GfxContext context, char const* file_name, char const* file_path = nullptr, char const* shader_model = nullptr);
@@ -346,17 +417,21 @@ class GfxKernel
     enum
     {
         kType_Compute,
-        kType_Graphics
+        kType_Graphics,
+        kType_MeshShader,
     } type;
 public:
     inline bool isGraphics() const { return type == kType_Graphics; }
     inline bool isCompute() const { return type == kType_Compute; }
+    inline bool isMeshShader() const { return type == kType_MeshShader; }
     inline char const* getName() const { return name; }
 };
 
 GfxKernel gfxCreateComputeKernel(GfxContext context, GfxProgram program, char const* entry_point = nullptr, char const** defines = nullptr, uint32_t define_count = 0);
 GfxKernel gfxCreateGraphicsKernel(GfxContext context, GfxProgram program, char const* entry_point = nullptr, char const** defines = nullptr, uint32_t define_count = 0);    // draws to back buffer
 GfxKernel gfxCreateGraphicsKernel(GfxContext context, GfxProgram program, GfxDrawState draw_state, char const* entry_point = nullptr, char const** defines = nullptr, uint32_t define_count = 0);
+GfxKernel gfxCreateMeshShaderKernel(GfxContext context, GfxProgram program, char const* entry_point = nullptr, char const** defines = nullptr, uint32_t define_count = 0);
+GfxKernel gfxCreateMeshShaderKernel(GfxContext context, GfxProgram program, GfxDrawState draw_state, char const* entry_point = nullptr, char const** defines = nullptr, uint32_t define_count = 0);
 GfxResult gfxDestroyKernel(GfxContext context, GfxKernel kernel);
 
 uint32_t const* gfxKernelGetNumThreads(GfxContext context, GfxKernel kernel);
@@ -393,6 +468,9 @@ GfxResult gfxCommandMultiDrawIndexedIndirect(GfxContext context, GfxBuffer args_
 GfxResult gfxCommandDispatch(GfxContext context, uint32_t num_groups_x, uint32_t num_groups_y, uint32_t num_groups_z);
 GfxResult gfxCommandDispatchIndirect(GfxContext context, GfxBuffer args_buffer);                                // expects a buffer of D3D12_DISPATCH_ARGUMENTS elements
 GfxResult gfxCommandMultiDispatchIndirect(GfxContext context, GfxBuffer args_buffer, uint32_t args_count);      // expects a buffer of D3D12_DISPATCH_ARGUMENTS elements
+GfxResult gfxCommandDispatchMesh(GfxContext context, uint32_t num_groups_x, uint32_t num_groups_y, uint32_t num_groups_z);
+GfxResult gfxCommandDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer);
+GfxResult gfxCommandMultiDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer, uint32_t args_count);      // expects a buffer of D3D12_DISPATCH_ARGUMENTS elements
 
 //!
 //! Debug/profile API.
@@ -527,9 +605,11 @@ class GfxInternal
 
     ID3D12Device*               device_             = nullptr;
     ID3D12Device5*              dxr_device_         = nullptr;
+    ID3D12Device5*              ms_device_          = nullptr;
     ID3D12CommandQueue*         command_queue_      = nullptr;
     ID3D12GraphicsCommandList*  command_list_       = nullptr;
     ID3D12GraphicsCommandList4* dxr_command_list_   = nullptr;
+    ID3D12GraphicsCommandList6* ms_command_list_    = nullptr;
     ID3D12CommandAllocator*     command_allocators_[kGfxConstant_BackBufferCount] = {};
 
     HANDLE          fence_event_ = {};
@@ -546,6 +626,7 @@ class GfxInternal
     ID3D12CommandSignature*             dispatch_signature_             = nullptr;
     ID3D12CommandSignature*             multi_draw_signature_           = nullptr;
     ID3D12CommandSignature*             multi_draw_indexed_signature_   = nullptr;
+    ID3D12CommandSignature*             dispatch_mesh_signature_        = nullptr;
     std::vector<D3D12_RESOURCE_BARRIER> resource_barriers_;
     ID3D12Resource*                     back_buffers_    [kGfxConstant_BackBufferCount] = {};
     uint32_t                            back_buffer_rtvs_[kGfxConstant_BackBufferCount] = {};
@@ -1117,6 +1198,8 @@ class GfxInternal
         String      vs_;
         String      gs_;
         String      ps_;
+        String      as_;
+        String      ms_;
         String      file_name_;
         String      file_path_;
         String      shader_model_;
@@ -1125,9 +1208,18 @@ class GfxInternal
     GfxArray<Program>   programs_;
     GfxHandles          program_handles_;
 
+    enum PipelineType
+    {
+        kPipelineType_Compute = 0,
+        kPipelineType_Graphics,
+        kPipelineType_MeshShader
+    };
+
     struct Kernel
     {
-        inline bool isCompute() const { return (num_threads_ != nullptr && *num_threads_ > 0); }
+        inline bool isCompute() const { return pipeline_type_ == kPipelineType_Compute; }
+        inline bool isGraphics() const { return pipeline_type_ == kPipelineType_Graphics; }
+        inline bool isMeshShader() const { return pipeline_type_ == kPipelineType_MeshShader; }
 
         struct Parameter
         {
@@ -1189,15 +1281,20 @@ class GfxInternal
         IDxcBlob*               vs_bytecode_        = nullptr;
         IDxcBlob*               gs_bytecode_        = nullptr;
         IDxcBlob*               ps_bytecode_        = nullptr;
+        IDxcBlob*               as_bytecode_        = nullptr;
+        IDxcBlob*               ms_bytecode_        = nullptr;
         ID3D12ShaderReflection* cs_reflection_      = nullptr;
         ID3D12ShaderReflection* vs_reflection_      = nullptr;
         ID3D12ShaderReflection* gs_reflection_      = nullptr;
         ID3D12ShaderReflection* ps_reflection_      = nullptr;
+        ID3D12ShaderReflection* as_reflection_      = nullptr;
+        ID3D12ShaderReflection* ms_reflection_      = nullptr;
         ID3D12RootSignature*    root_signature_     = nullptr;
         ID3D12PipelineState*    pipeline_state_     = nullptr;
         Parameter*              parameters_         = nullptr;
         uint32_t                parameter_count_    = 0;
         uint32_t                vertex_stride_      = 0;
+        PipelineType            pipeline_type_      = kPipelineType_Compute;
     };
     GfxArray<Kernel>    kernels_;
     GfxHandles          kernel_handles_;
@@ -1208,6 +1305,8 @@ class GfxInternal
         kShaderType_VS,
         kShaderType_GS,
         kShaderType_PS,
+        kShaderType_AS,
+        kShaderType_MS,
 
         kShaderType_Count
     };
@@ -1338,10 +1437,15 @@ public:
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create DXC compiler");
         device_->QueryInterface(IID_PPV_ARGS(&dxr_device_));
         SetDebugName(device_, "gfx_Device");
+        device_->QueryInterface(IID_PPV_ARGS(&ms_device_));
 
         D3D12_FEATURE_DATA_D3D12_OPTIONS5 rt_features = {};
         device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &rt_features, sizeof(D3D12_FEATURE_DATA_D3D12_OPTIONS5));
         if (rt_features.RaytracingTier < D3D12_RAYTRACING_TIER_1_1) { if (dxr_device_ != nullptr) dxr_device_->Release(); dxr_device_ = nullptr; }
+
+        D3D12_FEATURE_DATA_D3D12_OPTIONS7 ms_features = {};
+        device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &ms_features, sizeof(D3D12_FEATURE_DATA_D3D12_OPTIONS7));
+        if (ms_features.MeshShaderTier == D3D12_MESH_SHADER_TIER_NOT_SUPPORTED) { if (ms_device_ != nullptr) ms_device_->Release(); ms_device_ = nullptr; }
 
         D3D12_COMMAND_QUEUE_DESC
             queue_desc = {};
@@ -1390,7 +1494,9 @@ public:
         if (!SUCCEEDED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, *command_allocators_, nullptr, IID_PPV_ARGS(&command_list_))))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create command list");
         command_list_->QueryInterface(IID_PPV_ARGS(&dxr_command_list_));
+        command_list_->QueryInterface(IID_PPV_ARGS(&ms_command_list_));
         if (dxr_command_list_ == nullptr) { if (dxr_device_ != nullptr) dxr_device_->Release(); dxr_device_ = nullptr; }
+        if (ms_command_list_ == nullptr) { if (ms_device_ != nullptr) ms_device_->Release(); ms_device_ = nullptr; }
         SetDebugName(command_list_, "gfx_CommandList");
 
         fence_event_ = CreateEvent(nullptr, false, false, nullptr);
@@ -1460,6 +1566,18 @@ public:
         multi_draw_indexed_signature_desc.pArgumentDescs    = &multi_draw_indexed_arguments_desc;
         if (!SUCCEEDED(device_->CreateCommandSignature(&multi_draw_indexed_signature_desc, nullptr, IID_PPV_ARGS(&multi_draw_indexed_signature_))))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create indexed multi-draw command signature");
+
+        if (ms_device_ != nullptr)
+        {
+            D3D12_INDIRECT_ARGUMENT_DESC dispatch_mesh_argument_desc = {};
+            dispatch_mesh_argument_desc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
+            D3D12_COMMAND_SIGNATURE_DESC dispatch_mesh_signature_desc = {};
+            dispatch_mesh_signature_desc.ByteStride         = sizeof(D3D12_DISPATCH_MESH_ARGUMENTS);
+            dispatch_mesh_signature_desc.NumArgumentDescs   = 1;
+            dispatch_mesh_signature_desc.pArgumentDescs     = &dispatch_mesh_argument_desc;
+            if (!SUCCEEDED(device_->CreateCommandSignature(&dispatch_mesh_signature_desc, nullptr, IID_PPV_ARGS(&dispatch_mesh_signature_))))
+                return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create the disptach mesh command signature");
+        }
 
         const char clear_buffer_cs[] = {
             #include "./shader/clear_buffer_cs.txt"
@@ -1575,12 +1693,16 @@ public:
             device_->Release();
         if (dxr_device_)
             dxr_device_->Release();
+        if (ms_device_)
+            ms_device_->Release();
         if (command_queue_)
             command_queue_->Release();
         if (command_list_)
             command_list_->Release();
         if (dxr_command_list_)
             dxr_command_list_->Release();
+        if (ms_command_list_)
+            ms_command_list_->Release();
         for (uint32_t i = 0; i < ARRAYSIZE(command_allocators_); ++i)
             if (command_allocators_[i])
                 command_allocators_[i]->Release();
@@ -1608,6 +1730,8 @@ public:
             multi_draw_signature_->Release();
         if (multi_draw_indexed_signature_)
             multi_draw_indexed_signature_->Release();
+        if (dispatch_mesh_signature_)
+            dispatch_mesh_signature_->Release();
         for (uint32_t i = 0; i < ARRAYSIZE(back_buffers_); ++i)
             if (back_buffers_[i])
                 back_buffers_[i]->Release();
@@ -1642,7 +1766,7 @@ public:
             return buffer;  // invalid parameter
         uint32_t const alignment = (cpu_access == kGfxCpuAccess_Write ? 256 : 4);
         D3D12_RESOURCE_DESC resource_desc = {};
-        resource_desc.Dimension             = D3D12_RESOURCE_DIMENSION_BUFFER;
+        resource_desc.Dimension         = D3D12_RESOURCE_DIMENSION_BUFFER;
         resource_desc.Width             = GFX_MAX(GFX_ALIGN(size, alignment), (uint64_t)alignment);
         resource_desc.Height            = 1;
         resource_desc.DepthOrArraySize  = 1;
@@ -1695,7 +1819,7 @@ public:
         gfx_buffer.reference_count_ = (uint32_t*)malloc(sizeof(uint32_t));
         GFX_ASSERT(gfx_buffer.reference_count_ != nullptr);
         *gfx_buffer.reference_count_ = 1;   // retain
-        gfx_buffer.resource_state_ = (D3D12_RESOURCE_STATES*)malloc(sizeof(D3D12_RESOURCE_STATES));
+        gfx_buffer.resource_state_  = (D3D12_RESOURCE_STATES*)malloc(sizeof(D3D12_RESOURCE_STATES));
         GFX_ASSERT(gfx_buffer.resource_state_ != nullptr);
         *gfx_buffer.resource_state_ = resource_state;
         if (data != nullptr && cpu_access != kGfxCpuAccess_Write)
@@ -1775,9 +1899,9 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Cannot create texture object using invalid format");
             return texture; // invalid parameter
         }
-        width = GFX_MAX(width, 1u);
-        height = GFX_MAX(height, 1u);
-        mip_levels = GFX_MIN(GFX_MAX(mip_levels, 1u), gfxCalculateMipCount(width, height));
+        width       = GFX_MAX(width, 1u);
+        height      = GFX_MAX(height, 1u);
+        mip_levels  = GFX_MIN(GFX_MAX(mip_levels, 1u), gfxCalculateMipCount(width, height));
         D3D12_RESOURCE_STATES const resource_state = D3D12_RESOURCE_STATE_COPY_DEST;
         D3D12_RESOURCE_DESC resource_desc = {};
         resource_desc.Dimension         = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1825,10 +1949,10 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a 2D texture array with more than %u slices", 0xFFFFu);
             return texture; // invalid operation
         }
-        width = GFX_MAX(width, 1u);
-        height = GFX_MAX(height, 1u);
+        width       = GFX_MAX(width, 1u);
+        height      = GFX_MAX(height, 1u);
         slice_count = GFX_MAX(slice_count, 1u);
-        mip_levels = GFX_MIN(GFX_MAX(mip_levels, 1u), gfxCalculateMipCount(width, height));
+        mip_levels  = GFX_MIN(GFX_MAX(mip_levels, 1u), gfxCalculateMipCount(width, height));
         D3D12_RESOURCE_STATES const resource_state = D3D12_RESOURCE_STATE_COPY_DEST;
         D3D12_RESOURCE_DESC resource_desc = {};
         resource_desc.Dimension         = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1914,8 +2038,8 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Cannot create texture object using invalid format");
             return texture; // invalid parameter
         }
-        size = GFX_MAX(size, 1u);
-        mip_levels = GFX_MIN(GFX_MAX(mip_levels, 1u), gfxCalculateMipCount(size));
+        size        = GFX_MAX(size, 1u);
+        mip_levels  = GFX_MIN(GFX_MAX(mip_levels, 1u), gfxCalculateMipCount(size));
         D3D12_RESOURCE_STATES const resource_state = D3D12_RESOURCE_STATE_COPY_DEST;
         D3D12_RESOURCE_DESC resource_desc = {};
         resource_desc.Dimension         = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -2330,6 +2454,8 @@ public:
         gfx_program.vs_             = program_desc.vs;
         gfx_program.gs_             = program_desc.gs;
         gfx_program.ps_             = program_desc.ps;
+        gfx_program.as_             = program_desc.as;
+        gfx_program.ms_             = program_desc.ms;
         return program;
     }
 
@@ -2438,6 +2564,7 @@ public:
         gfx_kernel.num_threads_ = (uint32_t*)malloc(3 * sizeof(uint32_t));
         for (uint32_t i = 0; i < 3; ++i)
             gfx_kernel.num_threads_[i] = 1;
+        gfx_kernel.pipeline_type_ = kPipelineType_Compute;
         createKernel(gfx_program, gfx_kernel);  // create compute kernel
         if (!gfx_program.file_name_ && (gfx_kernel.root_signature_ == nullptr || gfx_kernel.pipeline_state_ == nullptr))
         {
@@ -2480,6 +2607,50 @@ public:
         gfx_kernel.num_threads_ = (uint32_t*)malloc(3 * sizeof(uint32_t));
         for (uint32_t i = 0; i < 3; ++i)
             gfx_kernel.num_threads_[i] = 0;
+        gfx_kernel.pipeline_type_ = kPipelineType_Graphics;
+        createKernel(gfx_program, gfx_kernel);  // create graphics kernel
+        if (!gfx_program.file_name_ && (gfx_kernel.root_signature_ == nullptr || gfx_kernel.pipeline_state_ == nullptr))
+        {
+            destroyKernel(graphics_kernel);
+            graphics_kernel = {};   // invalidate handle
+            GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Failed to create graphics kernel object `%s' using program `%s'", entry_point, gfx_program.file_path_.c_str());
+            return graphics_kernel;
+        }
+        return graphics_kernel;
+    }
+
+    GfxKernel createMeshShaderKernel(GfxProgram const& program, GfxDrawState const& draw_state, char const* entry_point, char const** defines, uint32_t define_count)
+    {
+        GfxKernel graphics_kernel = {};
+        if (!program_handles_.has_handle(program.handle))
+        {
+            GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a graphics kernel using an invalid program object");
+            return graphics_kernel;
+        }
+        GFX_ASSERT(define_count == 0 || defines != nullptr);
+        uint32_t const draw_state_index = static_cast<uint32_t>(draw_state.handle & 0xFFFFFFFFull);
+        DrawState const* gfx_draw_state = draw_states_.at(draw_state_index);
+        if (!gfx_draw_state)
+        {
+            GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a graphics kernel using an invalid draw state object");
+            return graphics_kernel;
+        }
+        Program const& gfx_program = programs_[program];
+        graphics_kernel.type = GfxKernel::kType_MeshShader;
+        entry_point = (entry_point ? entry_point : "main");
+        GFX_SNPRINTF(graphics_kernel.name, sizeof(graphics_kernel.name), "%s", entry_point);
+        graphics_kernel.handle = kernel_handles_.allocate_handle();
+
+        Kernel& gfx_kernel = kernels_.insert(graphics_kernel);
+        gfx_kernel.program_     = program;
+        gfx_kernel.entry_point_ = entry_point;
+        gfx_kernel.draw_state_  = gfx_draw_state->draw_state_;
+        for (uint32_t i = 0; i < define_count; ++i) 
+            gfx_kernel.defines_.push_back(defines[i]);
+        gfx_kernel.num_threads_ = (uint32_t*)malloc(3 * sizeof(uint32_t));
+        for (uint32_t i = 0; i < 3; ++i)
+            gfx_kernel.num_threads_[i] = 1;
+        gfx_kernel.pipeline_type_ = kPipelineType_MeshShader;
         createKernel(gfx_program, gfx_kernel);  // create graphics kernel
         if (!gfx_program.file_name_ && (gfx_kernel.root_signature_ == nullptr || gfx_kernel.pipeline_state_ == nullptr))
         {
@@ -3085,6 +3256,103 @@ public:
             if (dispatch_id > 0 && root_parameter_index != 0xFFFFFFFFu)  // <- patch root constants
                 command_list_->SetComputeRoot32BitConstant(root_parameter_index, dispatch_id, destination_offset);
             command_list_->ExecuteIndirect(dispatch_signature_, 1, gfx_buffer.resource_, gfx_buffer.data_offset_ + dispatch_id * sizeof(D3D12_DISPATCH_ARGUMENTS), nullptr, 0);
+        }
+        return kGfxResult_NoError;
+    }
+
+    GfxResult encodeDispatchMesh(uint32_t num_groups_x, uint32_t num_groups_y, uint32_t num_groups_z)
+    {
+        if (ms_command_list_ == nullptr)
+            return kGfxResult_InvalidOperation;
+        if (!num_groups_x || !num_groups_y || !num_groups_z)
+            return kGfxResult_NoError;  // nothing to dispatch
+        if (!kernel_handles_.has_handle(bound_kernel_.handle))
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatchMesh when bound kernel object is invalid");
+        Kernel& kernel = kernels_[bound_kernel_];
+        if (!kernel.isMeshShader())
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatchMesh using a graphics kernel object or compute kernel object.");
+        if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
+            return kGfxResult_NoError;  // skip dispatch call
+        GFX_TRY(installShaderState(kernel));
+        submitPipelineBarriers();   // transition our resources if needed
+        ms_command_list_->DispatchMesh(num_groups_x, num_groups_y, num_groups_z);
+        return kGfxResult_NoError;
+    }
+
+    GfxResult encodeDispatchMeshIndirect(GfxBuffer args_buffer)
+    {
+        if (ms_command_list_ == nullptr)
+            return kGfxResult_InvalidOperation;
+        if (!buffer_handles_.has_handle(args_buffer.handle))
+            return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot dispatch using an invalid arguments buffer object");
+        if (args_buffer.cpu_access == kGfxCpuAccess_Read)
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using an arguments buffer object with read CPU access");
+        if (!kernel_handles_.has_handle(bound_kernel_.handle))
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+        Kernel& kernel = kernels_[bound_kernel_];
+        if (!kernel.isMeshShader())
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object or compute kernel object.");
+        if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
+            return kGfxResult_NoError;  // skip dispatch call
+        Buffer& gfx_buffer = buffers_[args_buffer];
+        SetObjectName(gfx_buffer, args_buffer.name);
+        // TODO: might need multiple resource state flags... (gboisse)
+        GFX_TRY(installShaderState(kernel));
+        if (args_buffer.cpu_access == kGfxCpuAccess_None)
+            transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+        submitPipelineBarriers();   // transition our resources if needed
+        ms_command_list_->ExecuteIndirect(dispatch_mesh_signature_, 1, gfx_buffer.resource_, gfx_buffer.data_offset_, nullptr, 0);
+        return kGfxResult_NoError;
+    }
+
+    GfxResult encodeMultiDispatchMeshIndirect(GfxBuffer args_buffer, uint32_t args_count)
+    {
+        if (ms_command_list_ == nullptr)
+            return kGfxResult_InvalidOperation;
+        if (args_count == 0)
+            return kGfxResult_NoError;  // nothing to dispatch
+        if (!buffer_handles_.has_handle(args_buffer.handle))
+            return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot dispatch using an invalid arguments buffer object");
+        if (args_buffer.cpu_access == kGfxCpuAccess_Read)
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using an arguments buffer object with read CPU access");
+        if (!kernel_handles_.has_handle(bound_kernel_.handle))
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+        Kernel& kernel = kernels_[bound_kernel_];
+        if (!kernel.isMeshShader())
+            return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object or compute kernel object");
+        if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
+            return kGfxResult_NoError;  // skip multi-dispatch call
+        Buffer& gfx_buffer = buffers_[args_buffer];
+        SetObjectName(gfx_buffer, args_buffer.name);
+        // TODO: might need multiple resource state flags... (gboisse)
+        GFX_TRY(installShaderState(kernel));
+        if (args_buffer.cpu_access == kGfxCpuAccess_None)
+            transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+        submitPipelineBarriers();   // transition our resources if needed
+        uint32_t root_parameter_index = 0xFFFFFFFFu, destination_offset;
+        static uint64_t const dispatch_id_parameter = Hash("gfx_DispatchID");
+        for (uint32_t i = 0; i < kernel.parameter_count_; ++i)
+            if (kernel.parameters_[i].type_ == Kernel::Parameter::kType_Constants)
+                for (uint32_t j = 0; j < kernel.parameters_[i].variable_count_; ++j)
+                    if (kernel.parameters_[i].variables_[j].parameter_id_ == dispatch_id_parameter)
+                    {
+                        root_parameter_index = i;   // found root parameter
+                        destination_offset = kernel.parameters_[i].variables_[j].data_start_ / sizeof(uint32_t);
+                        i = kernel.parameter_count_;
+                        break;  // located "gfx_DispatchID"
+                    }
+        if (root_parameter_index == 0xFFFFFFFFu)
+        {
+            static bool warned;
+            if (!warned)
+                GFX_PRINTLN("Warning: unable to locate `gfx_DispatchID' root constant for multi-dispatch call");
+            warned = true;  // user was warned
+        }
+        for (uint32_t dispatch_id = 0; dispatch_id < args_count; ++dispatch_id)
+        {
+            if (dispatch_id > 0 && root_parameter_index != 0xFFFFFFFFu)  // <- patch root constants
+                ms_command_list_->SetComputeRoot32BitConstant(root_parameter_index, dispatch_id, destination_offset);
+            ms_command_list_->ExecuteIndirect(dispatch_mesh_signature_, 1, gfx_buffer.resource_, gfx_buffer.data_offset_ + dispatch_id * sizeof(D3D12_DISPATCH_MESH_ARGUMENTS), nullptr, 0);
         }
         return kGfxResult_NoError;
     }
@@ -4282,6 +4550,14 @@ private:
                 shader = kernel.ps_reflection_;
                 root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
                 break;
+            case kShaderType_AS:
+                shader = kernel.as_reflection_;
+                root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_AMPLIFICATION;
+                break;
+            case kShaderType_MS:
+                shader = kernel.ms_reflection_;
+                root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_MESH;
+                break;
             default:
                 GFX_ASSERTMSG(0, "Unsupported shader type `%u' was encountered", i);
                 break;
@@ -4463,6 +4739,8 @@ private:
         root_signature_desc.Flags |= (kernel.gs_bytecode_ != nullptr ? D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT
             : D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS);
         if (kernel.ps_bytecode_ == nullptr) root_signature_desc.Flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+        if (kernel.as_bytecode_ == nullptr) root_signature_desc.Flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_AMPLIFICATION_SHADER_ROOT_ACCESS;
+        if (kernel.ms_bytecode_ == nullptr) root_signature_desc.Flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_MESH_SHADER_ROOT_ACCESS;
 
         D3D12SerializeRootSignature(&root_signature_desc, D3D_ROOT_SIGNATURE_VERSION_1, &result, &error);
         if (!result)
@@ -4607,6 +4885,147 @@ private:
             pso_desc.BlendState.RenderTarget->BlendOpAlpha      = draw_state.blend_state_.blend_op_alpha_;
         }
         device_->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&kernel.pipeline_state_));
+        return kGfxResult_NoError;
+    }
+
+
+    template<typename StructType, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type>
+    class alignas(void*) StateSubObject
+    {
+    public:
+        StateSubObject() noexcept
+        : m_Type    (Type)
+        , m_Value   (StructType())
+        { /* DO_NOTHING */ }
+
+        StateSubObject(StructType const& value) noexcept
+        : m_Type    (Type)
+        , m_Value   (value)
+        { /* DO_NOTHING */ }
+
+        StateSubObject& operator = (StructType const& value) noexcept
+        {
+            m_Type  = Type;
+            m_Value = value;
+            return *this;
+        }
+
+        operator StructType const&() const noexcept 
+        { return m_Value; }
+
+        operator StructType&() noexcept 
+        { return m_Value; }
+
+        StructType* operator&() noexcept
+        { return &m_Value; }
+
+        StructType const* operator&() const noexcept
+        { return &m_Value; }
+
+    private:
+        D3D12_PIPELINE_STATE_SUBOBJECT_TYPE m_Type;
+        StructType                          m_Value;
+    };
+
+    GfxResult createMeshShaderPipelineState(Kernel& kernel, DrawState::Data const& draw_state)
+    {
+        GFX_ASSERT(kernel.pipeline_state_ == nullptr);
+        std::vector<D3D12_INPUT_ELEMENT_DESC> input_layout;
+        if (kernel.root_signature_ == nullptr)
+            return kGfxResult_NoError;
+
+        if (ms_device_ == nullptr)
+            return kGfxResult_InvalidOperation;
+
+        struct MESH_SHADER_PIPELINE_STATE_DESC
+        {
+            StateSubObject<ID3D12RootSignature*, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE> pRootSignature;
+            StateSubObject<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS> AS;
+            StateSubObject<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS> MS;
+            StateSubObject<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS> PS;
+            StateSubObject<D3D12_BLEND_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND> BlendState;
+            StateSubObject<UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK> SampleMask;
+            StateSubObject<D3D12_RASTERIZER_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER> RasterizerState;
+            StateSubObject<D3D12_DEPTH_STENCIL_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL> DepthStencilState;
+            StateSubObject<D3D12_RT_FORMAT_ARRAY, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS> RTFormats;
+            StateSubObject<DXGI_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT> DSFormat;
+        };
+
+        D3D12_RASTERIZER_DESC rs = {};
+        rs.FillMode                 = draw_state.raster_state_.fill_mode_;
+        rs.CullMode                 = draw_state.raster_state_.cull_mode_;
+        rs.FrontCounterClockwise    = TRUE;
+        rs.DepthClipEnable          = TRUE;
+
+        D3D12_DEPTH_STENCIL_DESC dss = {};
+        dss.DepthFunc       = D3D12_COMPARISON_FUNC_LESS;
+        dss.DepthWriteMask  = D3D12_DEPTH_WRITE_MASK_ALL;
+
+        D3D12_RT_FORMAT_ARRAY formats = {};
+        DXGI_FORMAT dsvFormat = DXGI_FORMAT_UNKNOWN;
+
+        D3D12_BLEND_DESC bs = {};
+        for(uint32_t i=0; i<ARRAYSIZE(bs.RenderTarget); ++i)
+        {
+            bs.RenderTarget[i].SrcBlend                = D3D12_BLEND_ONE;
+            bs.RenderTarget[i].DestBlend               = D3D12_BLEND_ZERO;
+            bs.RenderTarget[i].BlendOp                 = D3D12_BLEND_OP_ADD;
+            bs.RenderTarget[i].SrcBlendAlpha           = D3D12_BLEND_ONE;
+            bs.RenderTarget[i].DestBlendAlpha          = D3D12_BLEND_ZERO;
+            bs.RenderTarget[i].BlendOpAlpha            = D3D12_BLEND_OP_ADD;
+            bs.RenderTarget[i].LogicOp                 = D3D12_LOGIC_OP_NOOP;
+            bs.RenderTarget[i].RenderTargetWriteMask   = D3D12_COLOR_WRITE_ENABLE_ALL;
+        }
+
+        {
+            for (uint32_t i = 0; i < ARRAYSIZE(draw_state.color_targets_); ++i)
+                if (!draw_state.color_targets_[i].texture_)
+                    continue;   // no valid color target at index
+                else
+                {
+                    GfxTexture const& texture = draw_state.color_targets_[i].texture_;
+                    formats.RTFormats[i] = texture.format;
+                    formats.NumRenderTargets = i + 1;
+                }
+            if (draw_state.depth_stencil_target_.texture_)
+            {
+                dss.DepthEnable = TRUE;
+                dsvFormat       = draw_state.depth_stencil_target_.texture_.format;
+            }
+            else if (formats.NumRenderTargets == 0)  // special case - if no color target is supplied, draw to back buffer
+            {
+                formats.NumRenderTargets = 1;
+                formats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+            }
+        }
+        if (draw_state.blend_state_)
+        {
+            bs.RenderTarget->BlendEnable       = TRUE;
+            bs.RenderTarget->SrcBlend          = draw_state.blend_state_.src_blend_;
+            bs.RenderTarget->DestBlend         = draw_state.blend_state_.dst_blend_;
+            bs.RenderTarget->BlendOp           = draw_state.blend_state_.blend_op_;
+            bs.RenderTarget->SrcBlendAlpha     = draw_state.blend_state_.src_blend_alpha_;
+            bs.RenderTarget->DestBlendAlpha    = draw_state.blend_state_.dst_blend_alpha_;
+            bs.RenderTarget->BlendOpAlpha      = draw_state.blend_state_.blend_op_alpha_;
+        }
+
+        MESH_SHADER_PIPELINE_STATE_DESC pso_desc = {};
+        pso_desc.pRootSignature                 = kernel.root_signature_;
+        pso_desc.AS                             = GetShaderBytecode(kernel.as_bytecode_);
+        pso_desc.MS                             = GetShaderBytecode(kernel.ms_bytecode_);
+        pso_desc.PS                             = GetShaderBytecode(kernel.ps_bytecode_);
+        pso_desc.SampleMask                     = UINT_MAX;
+        pso_desc.BlendState                     = bs;
+        pso_desc.RasterizerState                = rs;
+        pso_desc.DepthStencilState              = dss;
+        pso_desc.RTFormats                      = formats;
+        pso_desc.DSFormat                       = dsvFormat;
+
+        D3D12_PIPELINE_STATE_STREAM_DESC streamDesc = {};
+        streamDesc.SizeInBytes                   = sizeof(pso_desc);
+        streamDesc.pPipelineStateSubobjectStream = &pso_desc;
+
+        ms_device_->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&kernel.pipeline_state_));
         return kGfxResult_NoError;
     }
 
@@ -6610,6 +7029,8 @@ private:
         GFX_ASSERT(kernel.vs_bytecode_ == nullptr && kernel.vs_reflection_ == nullptr);
         GFX_ASSERT(kernel.gs_bytecode_ == nullptr && kernel.gs_reflection_ == nullptr);
         GFX_ASSERT(kernel.ps_bytecode_ == nullptr && kernel.ps_reflection_ == nullptr);
+        GFX_ASSERT(kernel.as_bytecode_ == nullptr && kernel.as_reflection_ == nullptr);
+        GFX_ASSERT(kernel.ms_bytecode_ == nullptr && kernel.ms_reflection_ == nullptr);
         GFX_ASSERT(kernel.root_signature_ == nullptr);
         GFX_ASSERT(kernel.pipeline_state_ == nullptr);
         GFX_ASSERT(kernel.parameters_ == nullptr);
@@ -6624,7 +7045,7 @@ private:
             else
                 kernel.cs_reflection_->GetThreadGroupSize(&kernel.num_threads_[0], &kernel.num_threads_[1], &kernel.num_threads_[2]);
         }
-        else
+        else if (kernel.isGraphics())
         {
             kernel_type = "Graphics";
             compileShader(program, kernel, kShaderType_VS, kernel.vs_bytecode_, kernel.vs_reflection_);
@@ -6632,6 +7053,21 @@ private:
             compileShader(program, kernel, kShaderType_PS, kernel.ps_bytecode_, kernel.ps_reflection_);
             createRootSignature(kernel);
             createGraphicsPipelineState(kernel, kernel.draw_state_);
+        }
+        else 
+        {
+            kernel_type = "MeshShader";
+            compileShader(program, kernel, kShaderType_AS, kernel.as_bytecode_, kernel.as_reflection_);
+            compileShader(program, kernel, kShaderType_MS, kernel.ms_bytecode_, kernel.ms_reflection_);
+            compileShader(program, kernel, kShaderType_PS, kernel.ps_bytecode_, kernel.ps_reflection_);
+            createRootSignature(kernel);
+            createMeshShaderPipelineState(kernel, kernel.draw_state_);
+            if (kernel.as_reflection_ != nullptr)
+                kernel.as_reflection_->GetThreadGroupSize(&kernel.num_threads_[0], &kernel.num_threads_[1], &kernel.num_threads_[2]);
+            else if (kernel.ms_reflection_ != nullptr)
+                kernel.ms_reflection_->GetThreadGroupSize(&kernel.num_threads_[0], &kernel.num_threads_[1], &kernel.num_threads_[2]);
+            else
+                for (uint32_t i=0; i<3; ++i) kernel.num_threads_[i] = 1;
         }
         if (kernel.root_signature_ != nullptr)
         {
@@ -6656,6 +7092,8 @@ private:
         if (kernel.vs_bytecode_    != nullptr) { kernel.vs_bytecode_  ->Release(); kernel.vs_bytecode_   = nullptr; }
         if (kernel.gs_bytecode_    != nullptr) { kernel.gs_bytecode_  ->Release(); kernel.gs_bytecode_   = nullptr; }
         if (kernel.ps_bytecode_    != nullptr) { kernel.ps_bytecode_  ->Release(); kernel.ps_bytecode_   = nullptr; }
+        if (kernel.as_bytecode_    != nullptr) { kernel.as_bytecode_  ->Release(); kernel.as_bytecode_   = nullptr; }
+        if (kernel.ms_bytecode_    != nullptr) { kernel.ms_bytecode_  ->Release(); kernel.ms_bytecode_   = nullptr; }
         if (kernel.cs_reflection_  != nullptr) { kernel.cs_reflection_->Release(); kernel.cs_reflection_ = nullptr; }
         if (kernel.vs_reflection_  != nullptr) { kernel.vs_reflection_->Release(); kernel.vs_reflection_ = nullptr; }
         if (kernel.gs_reflection_  != nullptr) { kernel.gs_reflection_->Release(); kernel.gs_reflection_ = nullptr; }
@@ -6691,7 +7129,7 @@ private:
             mbstowcs(wshader_file, shader_file, ARRAYSIZE(shader_file));
             dxc_utils_->LoadFile(wshader_file, nullptr, &dxc_source);
             if (!dxc_source) return; // no source found for this shader
-            shader_source.Ptr = dxc_source->GetBufferPointer();
+            shader_source.Ptr  = dxc_source->GetBufferPointer();
             shader_source.Size = dxc_source->GetBufferSize();
         }
         else
@@ -6712,6 +7150,12 @@ private:
             case kShaderType_PS:
                 shader_source.Ptr = program.ps_.c_str();
                 break;
+            case kShaderType_AS:
+                shader_source.Ptr = program.as_.c_str();
+                break;
+            case kShaderType_MS:
+                shader_source.Ptr = program.ms_.c_str();
+                break;
             default:
                 GFX_ASSERTMSG(0, "An unsupported shader type `%u' was supplied", (uint32_t)shader_type);
                 return;
@@ -6725,7 +7169,9 @@ private:
             "cs_",
             "vs_",
             "gs_",
-            "ps_"
+            "ps_",
+            "as_",
+            "ms_",
         };
         static_assert(ARRAYSIZE(shader_profiles) == kShaderType_Count, "An invalid number of shader profiles was supplied");
         for (uint32_t i = 0; i < ARRAYSIZE(shader_profiles); ++i) strcpy(shader_profiles[i] + strlen(shader_profiles[i]), program.shader_model_.c_str());
@@ -6999,7 +7445,9 @@ char const* GfxInternal::shader_extensions_[] =
     ".comp",
     ".vert",
     ".geom",
-    ".frag"
+    ".frag",
+    ".ampl",
+    ".mesh",
 };
 
 GfxArray<GfxInternal::DrawState> GfxInternal::draw_states_;
@@ -7394,6 +7842,20 @@ GfxKernel gfxCreateGraphicsKernel(GfxContext context, GfxProgram program, GfxDra
     return gfx->createGraphicsKernel(program, draw_state, entry_point, defines, define_count);
 }
 
+GfxKernel gfxCreateMeshShaderKernel(GfxContext context, GfxProgram program, char const* entry_point, char const** defines, uint32_t define_count)
+{
+    GfxDrawState const default_draw_state = {};
+    return gfxCreateMeshShaderKernel(context, program, default_draw_state, entry_point, defines, define_count);
+}
+
+GfxKernel gfxCreateMeshShaderKernel(GfxContext context, GfxProgram program, GfxDrawState draw_state, char const* entry_point, char const** defines, uint32_t define_count)
+{
+    GfxKernel const mesh_kernel = {};
+    GfxInternal* gfx = GfxInternal::GetGfx(context);
+    if (!gfx) return mesh_kernel;    // invalid context
+    return gfx->createMeshShaderKernel(program, draw_state, entry_point, defines, define_count);
+}
+
 GfxResult gfxDestroyKernel(GfxContext context, GfxKernel kernel)
 {
     GfxInternal* gfx = GfxInternal::GetGfx(context);
@@ -7567,6 +8029,27 @@ GfxResult gfxCommandMultiDispatchIndirect(GfxContext context, GfxBuffer args_buf
     GfxInternal* gfx = GfxInternal::GetGfx(context);
     if (!gfx) return kGfxResult_InvalidParameter;
     return gfx->encodeMultiDispatchIndirect(args_buffer, args_count);
+}
+
+GfxResult gfxCommandDispatchMesh(GfxContext context, uint32_t num_groups_x, uint32_t num_groups_y, uint32_t num_groups_z)
+{
+    GfxInternal* gfx = GfxInternal::GetGfx(context);
+    if (!gfx) return kGfxResult_InvalidParameter;
+    return gfx->encodeDispatchMesh(num_groups_x, num_groups_y, num_groups_z);
+}
+
+GfxResult gfxCommandDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer)
+{
+    GfxInternal* gfx = GfxInternal::GetGfx(context);
+    if (!gfx) return kGfxResult_InvalidParameter;
+    return gfx->encodeDispatchMeshIndirect(args_buffer);
+}
+
+GfxResult gfxCommandMultiDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer, uint32_t args_count)
+{
+    GfxInternal* gfx = GfxInternal::GetGfx(context);
+    if (!gfx) return kGfxResult_InvalidParameter;
+    return gfx->encodeMultiDispatchMeshIndirect(args_buffer, args_count);
 }
 
 GfxTimestampQuery gfxCreateTimestampQuery(GfxContext context)
