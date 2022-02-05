@@ -92,14 +92,14 @@ class GfxConstRef : public GfxRefBase<TYPE, TYPE const>
 public:
     GfxConstRef() {} GfxConstRef(GfxRef<TYPE> const &other)
     {
-        handle = other.handle;
-        scene  = other.scene;
+        this->handle = other.handle;
+        this->scene  = other.scene;
     }
     operator GfxRef<TYPE>() const 
     {
         GfxRef<TYPE> ref;
-        ref.handle = handle;
-        ref.scene  = scene;
+        ref.handle = this->handle;
+        ref.scene  = this->scene;
         return ref;
     }
 };
@@ -1082,7 +1082,7 @@ private:
     {
         TYPE value = {};
         if(index >= buffer.count_) return value;
-        using ComponentType = GltfComponent<TYPE>::Type;
+        using ComponentType = typename GltfComponent<TYPE>::Type;
         uint8_t const *data = (buffer.data_ + index * buffer.stride_);
         uint32_t const num_components = tinygltf::GetNumComponentsInType(buffer.type_);
         uint32_t const component_size = tinygltf::GetComponentSizeInBytes(buffer.component_type_);
