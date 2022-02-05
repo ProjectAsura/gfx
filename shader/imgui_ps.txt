@@ -1,0 +1,18 @@
+R"(
+
+Texture2D    FontBuffer;
+SamplerState FontSampler;
+
+struct Pixel
+{
+     float4 pos : SV_Position;
+     float2 uv  : TEXCOORD;
+     float4 col : COLOR;
+};
+
+float4 main(in Pixel input) : SV_Target
+{
+    return input.col * FontBuffer.SampleLevel(FontSampler, input.uv, 0.0f);
+}
+
+)"

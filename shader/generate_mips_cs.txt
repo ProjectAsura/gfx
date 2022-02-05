@@ -1,0 +1,27 @@
+R"(
+
+RWTexture2D<float4> InputBuffer;
+RWTexture2D<float4> OutputBuffer;
+
+[numthreads(16, 16, 1)]
+void main(in uint2 gidx : SV_DispatchThreadID)
+{
+    uint2 dims;
+    float w = 0.0f;
+    InputBuffer.GetDimensions(dims.x, dims.y);
+    if(any(gidx >= max(dims >> 1, 1))) return;
+    float4 result = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    for(uint y = 0; y < 2; ++y)
+    {
+        for(uint x = 0; x < 2; ++x)
+        {
+            const uint2 pix = (gidx << 1) + uint2(x, y);
+            if(any(pix >= dims)) break; // out of bounds
+            result += InputBuffer[pix];
+            ++w;
+        }
+    }
+    OutputBuffer[gidx] = result / w;
+}
+
+)"

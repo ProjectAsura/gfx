@@ -1,4 +1,4 @@
-/****************************************************************************
+﻿/****************************************************************************
 MIT License
 
 Copyright (c) 2022 Guillaume Boissé
@@ -33,10 +33,16 @@ template<typename TYPE> class GfxConstRef;
 //! Scene creation/destruction.
 //!
 
-class GfxScene { friend class GfxSceneInternal; uint64_t handle; public: inline GfxScene() : handle(0) {}
-                 inline bool operator ==(GfxScene const &other) const { return handle == other.handle; }
-                 inline bool operator !=(GfxScene const &other) const { return handle != other.handle; }
-                 inline operator bool() const { return !!handle; } };
+class GfxScene 
+{
+    friend class GfxSceneInternal;
+    uint64_t handle;
+public:
+    inline GfxScene() : handle(0) {}
+    inline bool operator ==(GfxScene const &other) const { return handle == other.handle; }
+    inline bool operator !=(GfxScene const &other) const { return handle != other.handle; }
+    inline operator bool() const { return !!handle; }
+};
 
 GfxScene gfxCreateScene();
 GfxResult gfxDestroyScene(GfxScene scene);
@@ -58,32 +64,62 @@ template<typename TYPE> GfxRef<TYPE> gfxSceneGetObjectHandle(GfxScene scene, uin
 //!
 
 template<typename TYPE, typename OBJECT_TYPE>
-class GfxRefBase { friend class GfxSceneInternal; protected: uint64_t handle; GfxScene scene; public: GfxRefBase() : handle(0), scene{} {}
-                   bool operator ==(GfxRefBase const &other) const { return handle == other.handle && scene == other.scene; }
-                   bool operator !=(GfxRefBase const &other) const { return handle != other.handle || scene != other.scene; }
-                   uint32_t getIndex() const { return (uint32_t)(handle ? handle & 0xFFFFFFFFull : 0xFFFFFFFFull); }
-                   OBJECT_TYPE *operator ->() const { return gfxSceneGetObject<TYPE>(scene, handle); }
-                   OBJECT_TYPE &operator *() const { return *operator ->(); }
-                   operator bool() const { return !!operator ->(); }
-                   operator uint32_t() const { return getIndex(); }
-                   operator uint64_t() const { return handle; } };
+class GfxRefBase
+{
+    friend class GfxSceneInternal;
+protected:
+    uint64_t handle;
+    GfxScene scene;
+public:
+    GfxRefBase() : handle(0), scene{} {}
+    bool operator ==(GfxRefBase const &other) const { return handle == other.handle && scene == other.scene; }
+    bool operator !=(GfxRefBase const &other) const { return handle != other.handle || scene != other.scene; }
+    uint32_t getIndex() const { return (uint32_t)(handle ? handle & 0xFFFFFFFFull : 0xFFFFFFFFull); }
+    OBJECT_TYPE *operator ->() const { return gfxSceneGetObject<TYPE>(scene, handle); }
+    OBJECT_TYPE &operator *() const { return *operator ->(); }
+    operator bool() const { return !!operator ->(); }
+    operator uint32_t() const { return getIndex(); }
+    operator uint64_t() const { return handle; }
+};
 
 template<typename TYPE>
-class GfxRef : public GfxRefBase<TYPE, TYPE> { friend class GfxConstRef<TYPE>; };
+class GfxRef : public GfxRefBase<TYPE, TYPE> 
+{ friend class GfxConstRef<TYPE>; };
 
 template<typename TYPE>
-class GfxConstRef : public GfxRefBase<TYPE, TYPE const> { public: GfxConstRef() {} GfxConstRef(GfxRef<TYPE> const &other) { handle = other.handle; scene = other.scene; }
-                                                          operator GfxRef<TYPE>() const { GfxRef<TYPE> ref; ref.handle = handle; ref.scene = scene; return ref; } };
+class GfxConstRef : public GfxRefBase<TYPE, TYPE const>
+{
+public:
+    GfxConstRef() {} GfxConstRef(GfxRef<TYPE> const &other)
+    {
+        handle = other.handle;
+        scene  = other.scene;
+    }
+    operator GfxRef<TYPE>() const 
+    {
+        GfxRef<TYPE> ref;
+        ref.handle = handle;
+        ref.scene  = scene;
+        return ref;
+    }
+};
 
 //!
 //! Metadata API.
 //!
 
-class GfxMetadata { friend class GfxSceneInternal; bool is_valid; std::string asset_file; std::string object_name; public:
-                    inline char const *getAssetFile() const { return asset_file.c_str(); }
-                    inline char const *getObjectName() const { return object_name.c_str(); }
-                    inline bool getIsValid() const { return is_valid; }
-                    inline operator bool() const { return is_valid; } };
+class GfxMetadata
+{
+    friend class GfxSceneInternal;
+    bool        is_valid;
+    std::string asset_file;
+    std::string object_name;
+public:
+    inline char const *getAssetFile() const { return asset_file.c_str(); }
+    inline char const *getObjectName() const { return object_name.c_str(); }
+    inline bool getIsValid() const { return is_valid; }
+    inline operator bool() const { return is_valid; } 
+};
 
 template<typename TYPE> GfxMetadata const &gfxSceneGetObjectMetadata(GfxScene scene, uint64_t object_handle);
 
@@ -412,58 +448,58 @@ class GfxSceneInternal
 
     struct GltfAnimationChannel
     {
-        uint64_t node_;
-        std::vector<float> keyframes_;
-        std::vector<glm::vec4> values_;
-        GltfAnimationChannelMode mode_;
-        GltfAnimationChannelType type_;
+        uint64_t                    node_;
+        std::vector<float>          keyframes_;
+        std::vector<glm::vec4>      values_;
+        GltfAnimationChannelMode    mode_;
+        GltfAnimationChannelType    type_;
     };
 
     struct GltfAnimation
     {
-        std::vector<uint64_t> nodes_;
-        std::vector<GltfAnimationChannel> channels_;
+        std::vector<uint64_t>               nodes_;
+        std::vector<GltfAnimationChannel>   channels_;
     };
 
-    GfxArray<GltfNode> gltf_nodes_;
-    GfxArray<uint32_t> gltf_node_refs_;
-    GfxArray<GltfAnimatedNode> gltf_animated_nodes_;
-    GfxHandles gltf_node_handles_;
-    GfxArray<GltfAnimation> gltf_animations_;
+    GfxArray<GltfNode>          gltf_nodes_;
+    GfxArray<uint32_t>          gltf_node_refs_;
+    GfxArray<GltfAnimatedNode>  gltf_animated_nodes_;
+    GfxHandles                  gltf_node_handles_;
+    GfxArray<GltfAnimation>     gltf_animations_;
 
-    GfxArray<GfxAnimation> animations_;
-    GfxArray<uint64_t> animation_refs_;
-    GfxArray<GfxMetadata> animation_metadata_;
-    GfxHandles animation_handles_;
+    GfxArray<GfxAnimation>      animations_;
+    GfxArray<uint64_t>          animation_refs_;
+    GfxArray<GfxMetadata>       animation_metadata_;
+    GfxHandles                  animation_handles_;
 
-    GfxArray<GfxCamera> cameras_;
-    GfxArray<uint64_t> camera_refs_;
-    GfxArray<GfxMetadata> camera_metadata_;
-    GfxConstRef<GfxCamera> active_camera_;
-    GfxHandles camera_handles_;
+    GfxArray<GfxCamera>         cameras_;
+    GfxArray<uint64_t>          camera_refs_;
+    GfxArray<GfxMetadata>       camera_metadata_;
+    GfxConstRef<GfxCamera>      active_camera_;
+    GfxHandles                  camera_handles_;
 
-    GfxArray<GfxImage> images_;
-    GfxArray<uint64_t> image_refs_;
-    GfxArray<GfxMetadata> image_metadata_;
-    GfxHandles image_handles_;
+    GfxArray<GfxImage>          images_;
+    GfxArray<uint64_t>          image_refs_;
+    GfxArray<GfxMetadata>       image_metadata_;
+    GfxHandles                  image_handles_;
 
-    GfxArray<GfxMaterial> materials_;
-    GfxArray<uint64_t> material_refs_;
-    GfxArray<GfxMetadata> material_metadata_;
-    GfxHandles material_handles_;
+    GfxArray<GfxMaterial>       materials_;
+    GfxArray<uint64_t>          material_refs_;
+    GfxArray<GfxMetadata>       material_metadata_;
+    GfxHandles                  material_handles_;
 
-    GfxArray<GfxMesh> meshes_;
-    GfxArray<uint64_t> mesh_refs_;
-    GfxArray<GfxMetadata> mesh_metadata_;
-    GfxHandles mesh_handles_;
+    GfxArray<GfxMesh>           meshes_;
+    GfxArray<uint64_t>          mesh_refs_;
+    GfxArray<GfxMetadata>       mesh_metadata_;
+    GfxHandles                  mesh_handles_;
 
-    GfxArray<GfxInstance> instances_;
-    GfxArray<uint64_t> instance_refs_;
-    GfxArray<GfxMetadata> instance_metadata_;
-    GfxHandles instance_handles_;
+    GfxArray<GfxInstance>       instances_;
+    GfxArray<uint64_t>          instance_refs_;
+    GfxArray<GfxMetadata>       instance_metadata_;
+    GfxHandles                  instance_handles_;
 
-    static GfxArray<GfxScene> scenes_;
-    static GfxHandles scene_handles_;
+    static GfxArray<GfxScene>   scenes_;
+    static GfxHandles           scene_handles_;
 
     template<typename TYPE> GfxArray<TYPE> &objects_();
     template<typename TYPE> GfxArray<uint64_t> &object_refs_();
@@ -905,12 +941,12 @@ private:
             GfxRef<GfxMaterial> material_ref = gfxSceneCreateMaterial(scene);
             tinyobj::material_t const &obj_material = obj_reader.GetMaterials()[i];
             GfxMetadata &material_metadata = material_metadata_[material_ref];
-            material_metadata.asset_file = asset_file;  // set up metadata
-            material_metadata.object_name = obj_material.name;
-            material_ref->albedo = glm::vec4(obj_material.diffuse[0], obj_material.diffuse[1], obj_material.diffuse[2], obj_material.dissolve);
-            material_ref->roughness = obj_material.roughness;
-            material_ref->metallicity = obj_material.metallic;
-            material_ref->emissivity = glm::vec3(obj_material.emission[0], obj_material.emission[1], obj_material.emission[2]);
+            material_metadata.asset_file    = asset_file;  // set up metadata
+            material_metadata.object_name   = obj_material.name;
+            material_ref->albedo            = glm::vec4(obj_material.diffuse[0], obj_material.diffuse[1], obj_material.diffuse[2], obj_material.dissolve);
+            material_ref->roughness         = obj_material.roughness;
+            material_ref->metallicity       = obj_material.metallic;
+            material_ref->emissivity        = glm::vec3(obj_material.emission[0], obj_material.emission[1], obj_material.emission[2]);
             LoadImage(obj_material.diffuse_texname, material_ref->albedo_map);
             if(material_ref->albedo_map) material_ref->albedo = glm::vec4(glm::vec3(1.0f), material_ref->albedo.w);
             LoadImage(obj_material.roughness_texname, material_ref->roughness_map);
@@ -1179,16 +1215,16 @@ private:
             GfxRef<GfxImage> image_ref = gfxSceneFindObjectByAssetFile<GfxImage>(scene, image_file.c_str());
             if(!image_ref)
             {
-                image_ref = gfxSceneCreateImage(scene);
-                image_ref->data = gltf_image.image;
-                image_ref->width = gltf_image.width;
-                image_ref->height = gltf_image.height;
-                image_ref->channel_count = gltf_image.component;
+                image_ref                    = gfxSceneCreateImage(scene);
+                image_ref->data              = gltf_image.image;
+                image_ref->width             = gltf_image.width;
+                image_ref->height            = gltf_image.height;
+                image_ref->channel_count     = gltf_image.component;
                 image_ref->bytes_per_channel = (gltf_image.bits >> 3);
                 image_ref->data.resize(image_ref->width * image_ref->height * image_ref->channel_count * image_ref->bytes_per_channel);
-                GfxMetadata &image_metadata = image_metadata_[image_ref];
-                image_metadata.asset_file = image_file; // set up metadata
-                image_metadata.object_name = image_name;
+                GfxMetadata &image_metadata  = image_metadata_[image_ref];
+                image_metadata.asset_file    = image_file; // set up metadata
+                image_metadata.object_name   = image_name;
             }
             images[(int32_t)i] = image_ref;
         }
@@ -1270,34 +1306,39 @@ private:
                 }
                 else
                 {
-                    std::string const metallicity_map_file = image_metadata_[(*it).second].asset_file + ".b";
-                    std::string const roughness_map_file = image_metadata_[(*it).second].asset_file + ".g";
-                    GfxRef<GfxImage> metallicity_map_ref = gfxSceneFindObjectByAssetFile<GfxImage>(scene, metallicity_map_file.c_str());
-                    GfxRef<GfxImage> roughness_map_ref = gfxSceneFindObjectByAssetFile<GfxImage>(scene, roughness_map_file.c_str());
+                    std::string const metallicity_map_file  = image_metadata_[(*it).second].asset_file + ".b";
+                    std::string const roughness_map_file    = image_metadata_[(*it).second].asset_file + ".g";
+                    GfxRef<GfxImage> metallicity_map_ref    = gfxSceneFindObjectByAssetFile<GfxImage>(scene, metallicity_map_file.c_str());
+                    GfxRef<GfxImage> roughness_map_ref      = gfxSceneFindObjectByAssetFile<GfxImage>(scene, roughness_map_file.c_str());
                     if(!metallicity_map_ref || !roughness_map_ref)
                     {
                         metallicity_map_ref = gfxSceneCreateImage(scene);
-                        roughness_map_ref = gfxSceneCreateImage(scene);
+                        roughness_map_ref   = gfxSceneCreateImage(scene);
+
                         GfxMetadata &metallicity_map_metadata = image_metadata_[metallicity_map_ref];
                         metallicity_map_metadata = image_metadata_[(*it).second];   // set up metadata
                         metallicity_map_metadata.asset_file = metallicity_map_file;
                         metallicity_map_metadata.object_name += ".b";
+
                         GfxMetadata &roughness_map_metadata = image_metadata_[roughness_map_ref];
                         roughness_map_metadata = image_metadata_[(*it).second];
                         roughness_map_metadata.asset_file = roughness_map_file;
                         roughness_map_metadata.object_name += ".g";
+
                         GfxImage &metallicity_map = *metallicity_map_ref;
                         GfxImage &roughness_map = *roughness_map_ref;
                         GfxImage const &image = *(*it).second;
-                        metallicity_map.width = image.width;
-                        metallicity_map.height = image.height;
-                        metallicity_map.channel_count = 1;
-                        metallicity_map.bytes_per_channel = image.bytes_per_channel;
+
+                        metallicity_map.width               = image.width;
+                        metallicity_map.height              = image.height;
+                        metallicity_map.channel_count       = 1;
+                        metallicity_map.bytes_per_channel   = image.bytes_per_channel;
                         metallicity_map.data.resize(metallicity_map.width * metallicity_map.height * metallicity_map.bytes_per_channel);
-                        roughness_map.width = image.width;
-                        roughness_map.height = image.height;
-                        roughness_map.channel_count = 1;
-                        roughness_map.bytes_per_channel = image.bytes_per_channel;
+
+                        roughness_map.width                 = image.width;
+                        roughness_map.height                = image.height;
+                        roughness_map.channel_count         = 1;
+                        roughness_map.bytes_per_channel     = image.bytes_per_channel;
                         roughness_map.data.resize(roughness_map.width * roughness_map.height * roughness_map.bytes_per_channel);
                         uint32_t const texel_count = image.width * image.height * image.bytes_per_channel;
                         uint32_t const byte_stride = image.channel_count * image.bytes_per_channel;
@@ -1312,8 +1353,8 @@ private:
                                     metallicity_map.data[j * image.bytes_per_channel + k] = image.data[index++];
                         }
                     }
-                    material.roughness_map = roughness_map_ref;
-                    material.metallicity_map = metallicity_map_ref;
+                    material.roughness_map      = roughness_map_ref;
+                    material.metallicity_map    = metallicity_map_ref;
                     maps[metallicity_roughness_map] =
                         std::pair<GfxConstRef<GfxImage>, GfxConstRef<GfxImage>>(roughness_map_ref, metallicity_map_ref);
                 }
@@ -1352,12 +1393,12 @@ private:
                tinygltf::GetComponentSizeInBytes((uint32_t)gltf_accessor.componentType) *
                gltf_accessor.count > gltf_buffer_view.byteLength)
                 return buffer;  // out of bounds
-            buffer.type_ = (uint32_t)gltf_accessor.type;
-            buffer.count_ = (uint32_t)gltf_accessor.count;
-            buffer.normalize_ = (gltf_accessor.normalized ? 1 : 0);
-            buffer.data_ = gltf_buffer.data.data() + gltf_buffer_view.byteOffset + gltf_accessor.byteOffset;
-            buffer.stride_ = (uint32_t)gltf_buffer_view.byteStride;
-            buffer.component_type_ = (uint32_t)gltf_accessor.componentType;
+            buffer.type_            = (uint32_t)gltf_accessor.type;
+            buffer.count_           = (uint32_t)gltf_accessor.count;
+            buffer.normalize_       = (gltf_accessor.normalized ? 1 : 0);
+            buffer.data_            = gltf_buffer.data.data() + gltf_buffer_view.byteOffset + gltf_accessor.byteOffset;
+            buffer.stride_          = (uint32_t)gltf_buffer_view.byteStride;
+            buffer.component_type_  = (uint32_t)gltf_accessor.componentType;
             if(buffer.stride_ == 0)
             {
                 buffer.stride_ = tinygltf::GetNumComponentsInType(buffer.type_)
@@ -1601,18 +1642,18 @@ private:
                 }
                 if(animated_node != nullptr)
                 {
-                    animated_node->scale_ = S;
-                    animated_node->rotate_ = R;
-                    animated_node->translate_ = T;
+                    animated_node->scale_       = S;
+                    animated_node->rotate_      = R;
+                    animated_node->translate_   = T;
                 }
                 GFX_ASSERT(node != nullptr);
-                node->scale_ = S;
-                node->rotate_ = R;
-                node->translate_ = T;
-                node->matrix_ = local_transform;
-                std::swap(node->children_, children);
+                node->scale_        = S;
+                node->rotate_       = R;
+                node->translate_    = T;
+                node->matrix_       = local_transform;
+                std::swap(node->children_,  children);
                 std::swap(node->instances_, instances);
-                node->camera_ = camera;
+                node->camera_       = camera;
             }
             return is_node_animated;
         };
@@ -1653,12 +1694,13 @@ private:
         char const *file = GFX_MAX(strrchr(asset_file, '/'), strrchr(asset_file, '\\'));
         file = (file == nullptr ? asset_file : file + 1);   // retrieve file name
         size_t const image_data_size = (size_t)image_width * image_height * resolved_channel_count * sizeof(stbi_us);
+
         GfxRef<GfxImage> image_ref = gfxSceneCreateImage(scene);
         image_ref->data.resize(image_data_size);
-        image_ref->width = (uint32_t)image_width;
-        image_ref->height = (uint32_t)image_height;
-        image_ref->channel_count = resolved_channel_count;
-        image_ref->bytes_per_channel = (uint32_t)2;
+        image_ref->width                = (uint32_t)image_width;
+        image_ref->height               = (uint32_t)image_height;
+        image_ref->channel_count        = resolved_channel_count;
+        image_ref->bytes_per_channel    = (uint32_t)2;
         uint16_t *data = (uint16_t *)image_ref->data.data();
         for(int32_t y = 0; y < image_height; ++y)
             for(int32_t x = 0; x < image_width; ++x)
@@ -1688,12 +1730,13 @@ private:
         char const *file = GFX_MAX(strrchr(asset_file, '/'), strrchr(asset_file, '\\'));
         file = (file == nullptr ? asset_file : file + 1);   // retrieve file name
         size_t const image_data_size = (size_t)image_width * image_height * resolved_channel_count;
+
         GfxRef<GfxImage> image_ref = gfxSceneCreateImage(scene);
         image_ref->data.resize(image_data_size);
-        image_ref->width = (uint32_t)image_width;
-        image_ref->height = (uint32_t)image_height;
-        image_ref->channel_count = resolved_channel_count;
-        image_ref->bytes_per_channel = (uint32_t)1;
+        image_ref->width                = (uint32_t)image_width;
+        image_ref->height               = (uint32_t)image_height;
+        image_ref->channel_count        = resolved_channel_count;
+        image_ref->bytes_per_channel    = (uint32_t)1;
         for(int32_t y = 0; y < image_height; ++y)
             for(int32_t x = 0; x < image_width; ++x)
                 for(int32_t k = 0; k < (int32_t)resolved_channel_count; ++k)
@@ -1703,8 +1746,8 @@ private:
                     image_ref->data[dst_index] = (k < channel_count ? image_data[src_index] : (uint8_t)255);
                 }
         GfxMetadata &image_metadata = image_metadata_[image_ref];
-        image_metadata.asset_file = asset_file; // set up metadata
-        image_metadata.object_name = file;
+        image_metadata.asset_file   = asset_file; // set up metadata
+        image_metadata.object_name  = file;
         stbi_image_free(image_data);
         return kGfxResult_NoError;
     }

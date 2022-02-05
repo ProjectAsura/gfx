@@ -1,0 +1,8 @@
+R"(
+
+Texture2D InputBuffer;
+
+float4 main(in float4 pos : SV_Position) : SV_Target
+{ return InputBuffer.Load(int3(pos.xy, 0)); }
+
+)"

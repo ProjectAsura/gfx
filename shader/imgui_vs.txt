@@ -1,0 +1,33 @@
+R"(
+
+float4x4 ProjectionMatrix;
+
+struct Vertex
+{
+    float2 pos : POSITION;
+    float2 uv  : TEXCOORD;
+    uint   col : COLOR;
+};
+
+struct Pixel
+{
+    float4 pos : SV_Position;
+    float2 uv  : TEXCOORD;
+    float4 col : COLOR;
+};
+
+Pixel main(in Vertex input)
+{
+    Pixel output;
+    const float4 col = float4(
+        ((input.col >> 0 ) & 0xFFu) / 255.0f,
+        ((input.col >> 8 ) & 0xFFu) / 255.0f,
+        ((input.col >> 16) & 0xFFu) / 255.0f,
+        ((input.col >> 24) & 0xFFu) / 255.0f);
+    output.pos = mul(ProjectionMatrix, float4(input.pos.xy, 0.0f, 1.0f));
+    output.uv  = input.uv;
+    output.col = col;
+    return output;
+}
+
+)"
