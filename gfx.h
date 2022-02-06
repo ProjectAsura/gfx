@@ -199,7 +199,8 @@ public:
     inline float getMaxLod() const { return max_lod; }
 };
 
-GfxSamplerState gfxCreateSamplerState(GfxContext context, D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE address_u = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+GfxSamplerState gfxCreateSamplerState(GfxContext context, D3D12_FILTER filter,
+    D3D12_TEXTURE_ADDRESS_MODE address_u = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
     D3D12_TEXTURE_ADDRESS_MODE address_v = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
     D3D12_TEXTURE_ADDRESS_MODE address_w = D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
     float mip_lod_bias = 0.0f, float min_lod = 0.0f, float max_lod = (float)D3D12_REQ_MIP_LEVELS);
@@ -469,8 +470,8 @@ GfxResult gfxCommandDispatch(GfxContext context, uint32_t num_groups_x, uint32_t
 GfxResult gfxCommandDispatchIndirect(GfxContext context, GfxBuffer args_buffer);                                // expects a buffer of D3D12_DISPATCH_ARGUMENTS elements
 GfxResult gfxCommandMultiDispatchIndirect(GfxContext context, GfxBuffer args_buffer, uint32_t args_count);      // expects a buffer of D3D12_DISPATCH_ARGUMENTS elements
 GfxResult gfxCommandDispatchMesh(GfxContext context, uint32_t num_groups_x, uint32_t num_groups_y, uint32_t num_groups_z);
-GfxResult gfxCommandDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer);
-GfxResult gfxCommandMultiDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer, uint32_t args_count);      // expects a buffer of D3D12_DISPATCH_ARGUMENTS elements
+GfxResult gfxCommandDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer);                            // expects a buffer of D3D12_DISPATCH_MESH_ARGUMENTS elements
+GfxResult gfxCommandMultiDispatchMeshIndirect(GfxContext context, GfxBuffer args_buffer, uint32_t args_count);  // expects a buffer of D3D12_DISPATCH_MESH_ARGUMENTS elements
 
 //!
 //! Debug/profile API.
@@ -589,7 +590,7 @@ GfxResult gfxFinish(GfxContext context);
 #pragma warning(disable:4189)   // local variable is initialized but not referenced
 #pragma warning(disable:4211)   // nonstandard extension used: redefined extern to static
 #include "D3D12MemAlloc.cpp"    // D3D12MemoryAllocator
-#include "WinPixEventRuntime/pix3.h"
+#include "pix.h"
 #pragma warning(pop)
 
 #pragma warning(push)
@@ -631,7 +632,7 @@ class GfxInternal
     ID3D12Resource*                     back_buffers_    [kGfxConstant_BackBufferCount] = {};
     uint32_t                            back_buffer_rtvs_[kGfxConstant_BackBufferCount] = {};
 
-    GfxKernel   bound_kernel_               = {};
+    GfxKernel   bound_kernel_                   = {};
     GfxBuffer   draw_id_buffer_                 = {};
     uint64_t    descriptor_heap_id_             = 0;
     GfxBuffer   bound_index_buffer_             = {};
@@ -1422,8 +1423,10 @@ public:
             if (!adapters[i]) break; else
                 if (SUCCEEDED(D3D12CreateDevice(adapters[i], D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device_))))
                     break;
+
         if (device_ == nullptr)
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create D3D12 device");
+
         if ((flags & kGfxCreateContextFlag_EnableStablePowerState) != 0 && !SUCCEEDED(device_->SetStablePowerState(TRUE)))
         {
             GFX_PRINT_ERROR(kGfxResult_InternalError, "Unable to set stable power state, is developer mode enabled?");
@@ -1431,10 +1434,12 @@ public:
             if (!SUCCEEDED(D3D12CreateDevice(adapters[i], D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device_))))
                 return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create D3D12 device");
         }
+
         if (!SUCCEEDED(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&dxc_utils_))) ||
             !SUCCEEDED(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&dxc_compiler_))) ||
             !SUCCEEDED(dxc_utils_->CreateDefaultIncludeHandler(&dxc_include_handler_)))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create DXC compiler");
+
         device_->QueryInterface(IID_PPV_ARGS(&dxr_device_));
         SetDebugName(device_, "gfx_Device");
         device_->QueryInterface(IID_PPV_ARGS(&ms_device_));
@@ -1452,6 +1457,7 @@ public:
         queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
         if (!SUCCEEDED(device_->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&command_queue_))))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create command queue");
+
         command_queue_->GetTimestampFrequency(&timestamp_query_ticks_per_second_);
         SetDebugName(command_queue_, "gfx_CommandQueue");
 
@@ -1472,9 +1478,11 @@ public:
         IDXGISwapChain1* swap_chain = nullptr;
         if (!SUCCEEDED(factory->CreateSwapChainForHwnd(command_queue_, window, &swap_chain_desc, nullptr, nullptr, &swap_chain)))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create swap chain");
+
         swap_chain->QueryInterface(IID_PPV_ARGS(&swap_chain_)); swap_chain->Release();
         if (!swap_chain_ || !SUCCEEDED(factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER)))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to initialize swap chain");
+        
         fence_index_ = swap_chain_->GetCurrentBackBufferIndex();
 
         D3D12MA::ALLOCATOR_DESC allocator_desc = {};
@@ -1491,8 +1499,10 @@ public:
                 return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create command allocator");
             SetDebugName(command_allocators_[j], buffer);
         }
+
         if (!SUCCEEDED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, *command_allocators_, nullptr, IID_PPV_ARGS(&command_list_))))
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create command list");
+        
         command_list_->QueryInterface(IID_PPV_ARGS(&dxr_command_list_));
         command_list_->QueryInterface(IID_PPV_ARGS(&ms_command_list_));
         if (dxr_command_list_ == nullptr) { if (dxr_device_ != nullptr) dxr_device_->Release(); dxr_device_ = nullptr; }
@@ -1502,6 +1512,7 @@ public:
         fence_event_ = CreateEvent(nullptr, false, false, nullptr);
         if (!fence_event_)
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create event handle");
+
         for (uint32_t j = 0; j < ARRAYSIZE(fences_); ++j)
         {
             char buffer[256];
@@ -1518,6 +1529,7 @@ public:
             if (dummy_descriptors_[j] == 0xFFFFFFFFu)
                 return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to allocate dummy descriptors");
         }
+
         dummy_rtv_descriptor_ = allocateRTVDescriptor();
         if (dummy_rtv_descriptor_ == 0xFFFFFFFFu)
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to allocate dummy descriptors");
@@ -1764,6 +1776,7 @@ public:
         GfxBuffer buffer = {};
         if (cpu_access >= kGfxCpuAccess_Count)
             return buffer;  // invalid parameter
+
         uint32_t const alignment = (cpu_access == kGfxCpuAccess_Write ? 256 : 4);
         D3D12_RESOURCE_DESC resource_desc = {};
         resource_desc.Dimension         = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -1870,8 +1883,10 @@ public:
     {
         if (!buffer)
             return kGfxResult_NoError;
+
         if (!buffer_handles_.has_handle(buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid buffer object");
+        
         collect(buffers_[buffer]);  // release resources
         buffers_.erase(buffer); // destroy buffer
         buffer_handles_.free_handle(buffer.handle);
@@ -2074,8 +2089,10 @@ public:
     {
         if (!texture)
             return kGfxResult_NoError;
+
         if (!texture_handles_.has_handle(texture.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid texture object");
+        
         collect(textures_[texture]);    // release resources
         textures_.erase(texture);   // destroy texture object
         texture_handles_.free_handle(texture.handle);
@@ -2141,8 +2158,10 @@ public:
     {
         if (!sampler_state)
             return kGfxResult_NoError;
+
         if (!sampler_state_handles_.has_handle(sampler_state.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid sampler state object");
+        
         collect(sampler_states_[sampler_state]);    // release resources
         sampler_states_.erase(sampler_state);   // destroy sampler state
         sampler_state_handles_.free_handle(sampler_state.handle);
@@ -2166,8 +2185,10 @@ public:
     {
         if (!acceleration_structure)
             return kGfxResult_NoError;
+        
         if (!acceleration_structure_handles_.has_handle(acceleration_structure.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid acceleration structure object");
+        
         collect(acceleration_structures_[acceleration_structure]);  // release resources
         acceleration_structures_.erase(acceleration_structure); // destroy acceleration structure
         acceleration_structure_handles_.free_handle(acceleration_structure.handle);
@@ -2179,16 +2200,20 @@ public:
         void* data = nullptr;
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+        
         if (!acceleration_structure_handles_.has_handle(acceleration_structure.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot update an invalid acceleration structure object");
+        
         AccelerationStructure& gfx_acceleration_structure = acceleration_structures_[acceleration_structure];
         if (!gfx_acceleration_structure.needs_update_ && !gfx_acceleration_structure.needs_rebuild_)
             return kGfxResult_NoError;  // no outstanding build requests, early out
+        
         D3D12_GPU_VIRTUAL_ADDRESS const gpu_addr = allocateConstantMemory(gfx_acceleration_structure.raytracing_primitives_.size() * sizeof(D3D12_RAYTRACING_INSTANCE_DESC), data);
         D3D12_RAYTRACING_INSTANCE_DESC* instance_descs = (D3D12_RAYTRACING_INSTANCE_DESC*)data;
         uint32_t instance_desc_count = 0;
         if (gpu_addr == 0)
             return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to allocate for updating acceleration structure object with %u raytracing primitives", (uint32_t)gfx_acceleration_structure.raytracing_primitives_.size());
+        
         active_raytracing_primitives_.reserve(GFX_MAX(active_raytracing_primitives_.capacity(), gfx_acceleration_structure.raytracing_primitives_.size()));
         active_raytracing_primitives_.clear();  // compact away discarded raytracing primitives
         for (size_t i = 0; i < gfx_acceleration_structure.raytracing_primitives_.size(); ++i)
@@ -2245,11 +2270,13 @@ public:
         }
         GFX_ASSERT(buffer_handles_.has_handle(gfx_acceleration_structure.bvh_buffer_.handle));
         GFX_ASSERT(buffer_handles_.has_handle(raytracing_scratch_buffer_.handle));
+
         Buffer& gfx_buffer = buffers_[gfx_acceleration_structure.bvh_buffer_];
         Buffer& gfx_scratch_buffer = buffers_[raytracing_scratch_buffer_];
         SetObjectName(gfx_buffer, acceleration_structure.name);
         transitionResource(gfx_scratch_buffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         submitPipelineBarriers();   // ensure scratch is not in use
+
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build_desc = {};
         build_desc.DestAccelerationStructureData = gfx_buffer.resource_->GetGPUVirtualAddress() + gfx_buffer.data_offset_;
         build_desc.Inputs = tlas_inputs;
@@ -2275,12 +2302,15 @@ public:
 
     GfxRaytracingPrimitive const* getAccelerationStructureRaytracingPrimitives(GfxAccelerationStructure const& acceleration_structure)
     {
-        if (dxr_device_ == nullptr) return nullptr;  // avoid spamming console output
+        if (dxr_device_ == nullptr) 
+            return nullptr;  // avoid spamming console output
+
         if (!acceleration_structure_handles_.has_handle(acceleration_structure.handle))
         {
             GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Cannot get the raytracing primitives of an invalid acceleration structure object");
             return nullptr;
         }
+
         AccelerationStructure const& gfx_acceleration_structure = acceleration_structures_[acceleration_structure];
         return (!gfx_acceleration_structure.raytracing_primitives_.empty() ? gfx_acceleration_structure.raytracing_primitives_.data() : nullptr);
     }
@@ -2290,11 +2320,13 @@ public:
         GfxRaytracingPrimitive raytracing_primitive = {};
         if (dxr_device_ == nullptr)
             return raytracing_primitive;    // avoid spamming console output
+
         if (!acceleration_structure_handles_.has_handle(acceleration_structure.handle))
         {
             GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Cannot create a raytracing primitive using an invalid acceleration structure object");
             return raytracing_primitive;
         }
+        
         raytracing_primitive.handle = raytracing_primitive_handles_.allocate_handle();
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_.insert(raytracing_primitive);
         AccelerationStructure& gfx_acceleration_structure = acceleration_structures_[acceleration_structure];
@@ -2312,11 +2344,14 @@ public:
     {
         if (!raytracing_primitive)
             return kGfxResult_NoError;
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid raytracing primitive object");
+        
         RaytracingPrimitive const& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         if (acceleration_structure_handles_.has_handle(gfx_raytracing_primitive.acceleration_structure_.handle))
             acceleration_structures_[gfx_raytracing_primitive.acceleration_structure_].needs_rebuild_ = true;
+        
         collect(gfx_raytracing_primitive);  // release resources
         raytracing_primitives_.erase(raytracing_primitive); // destroy raytracing primitive
         raytracing_primitive_handles_.free_handle(raytracing_primitive.handle);
@@ -2327,15 +2362,20 @@ public:
     {
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set geometry on an invalid raytracing primitive object");
+        
         if (!buffer_handles_.has_handle(vertex_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot build a raytracing primitive using an invalid vertex buffer object");
+        
         vertex_stride = (vertex_stride != 0 ? vertex_stride : vertex_buffer.stride);
         if (vertex_stride == 0)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot build a raytracing primitive with a vertex buffer object of stride `0'");
+        
         if (vertex_buffer.size / vertex_stride > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot build a raytracing primitive with a buffer object containing more than 4 billion vertices");
+        
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         gfx_raytracing_primitive.vertex_buffer_ = createBufferRange(vertex_buffer, 0, vertex_buffer.size);
         gfx_raytracing_primitive.vertex_stride_ = vertex_stride;
@@ -2346,20 +2386,27 @@ public:
     {
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set geometry on an invalid raytracing primitive object");
+
         if (!buffer_handles_.has_handle(index_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot build a raytracing primitive using an invalid index buffer object");
+
         if (!buffer_handles_.has_handle(vertex_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot build a raytracing primitive using an invalid vertex buffer object");
+
         uint32_t const index_stride = (index_buffer.stride == 2 ? 2 : 4);
         if (index_buffer.size / index_stride > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot build a raytracing primitive with a buffer object containing more than 4 billion indices");
+
         vertex_stride = (vertex_stride != 0 ? vertex_stride : vertex_buffer.stride);
         if (vertex_stride == 0)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot build a raytracing primitive with a vertex buffer object of stride `0'");
+
         if (vertex_buffer.size / vertex_stride > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot build a raytracing primitive with a buffer object containing more than 4 billion vertices");
+
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         gfx_raytracing_primitive.index_buffer_  = createBufferRange(index_buffer, 0, index_buffer.size);
         gfx_raytracing_primitive.index_stride_  = index_stride;
@@ -2372,10 +2419,13 @@ public:
     {
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set transform on an invalid raytracing primitive object");
+
         if (row_major_4x4_transform == nullptr)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot pass `nullptr' as the transform of a raytracing primitive object");
+
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         GFX_TRY(updateRaytracingPrimitive(raytracing_primitive, gfx_raytracing_primitive));
         memcpy(gfx_raytracing_primitive.transform_, row_major_4x4_transform, sizeof(gfx_raytracing_primitive.transform_));
@@ -2386,10 +2436,13 @@ public:
     {
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set instanceID on an invalid raytracing primitive object");
+
         if (instance_id >= (1u << 24))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set an instanceID that is greater than %u", (1u << 24) - 1);
+
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         GFX_TRY(updateRaytracingPrimitive(raytracing_primitive, gfx_raytracing_primitive));
         gfx_raytracing_primitive.instance_id_ = instance_id;
@@ -2400,8 +2453,10 @@ public:
     {
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set instance mask on an invalid raytracing primitive object");
+        
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         GFX_TRY(updateRaytracingPrimitive(raytracing_primitive, gfx_raytracing_primitive));
         gfx_raytracing_primitive.instance_mask_ = instance_mask;
@@ -2412,8 +2467,10 @@ public:
     {
         if (dxr_device_ == nullptr)
             return kGfxResult_InvalidOperation; // avoid spamming console output
+
         if (!raytracing_primitive_handles_.has_handle(raytracing_primitive.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot update an invalid raytracing primitive object");
+
         RaytracingPrimitive& gfx_raytracing_primitive = raytracing_primitives_[raytracing_primitive];
         return buildRaytracingPrimitive(raytracing_primitive, gfx_raytracing_primitive, true);
     }
@@ -2423,11 +2480,12 @@ public:
         GfxProgram program = {};
         if (!file_name)
             return program; // invalid parameter
+
         file_path = (file_path != nullptr ? file_path : ".");
         char const last_char = file_path[strlen(file_path) - 1];
         char const* path_separator = (last_char == '/' || last_char == '\\' ? "" : "/");
         GFX_SNPRINTF(program.name, sizeof(program.name), "%s%s%s", file_path, path_separator, file_name);
-        shader_model = (shader_model != nullptr ? shader_model : dxr_device_ != nullptr ? "6_5" : "6_0");
+        shader_model = (shader_model != nullptr ? shader_model : (dxr_device_ != nullptr || ms_device_ != nullptr) ? "6_5" : "6_0");
         program.handle = program_handles_.allocate_handle();
 
         Program& gfx_program = programs_.insert(program);
@@ -2445,7 +2503,7 @@ public:
             GFX_SNPRINTF(program.name, sizeof(program.name), "%s", name);
         else
             GFX_SNPRINTF(program.name, sizeof(program.name), "gfx_Program%llu", program.handle);
-        shader_model = (shader_model != nullptr ? shader_model : dxr_device_ != nullptr ? "6_5" : "6_0");
+        shader_model = (shader_model != nullptr ? shader_model : (dxr_device_ != nullptr || ms_device_ != nullptr) ? "6_5" : "6_0");
 
         Program& gfx_program = programs_.insert(program);
         gfx_program.shader_model_   = shader_model;
@@ -2463,8 +2521,10 @@ public:
     {
         if (!program.handle)
             return kGfxResult_NoError;
+
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid program object");
+        
         collect(programs_[program]);    // release resources
         programs_.erase(program);   // destroy program
         program_handles_.free_handle(program.handle);
@@ -2475,8 +2535,10 @@ public:
     {
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set a parameter onto an invalid program object");
+
         if (!parameter_name || !*parameter_name)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter with an invalid name");
+
         Program& gfx_program = programs_[program];  // get hold of program object
         gfx_program.insertParameter(parameter_name).set(buffer);
         return kGfxResult_NoError;
@@ -2486,8 +2548,10 @@ public:
     {
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set a parameter onto an invalid program object");
+
         if (!parameter_name || !*parameter_name)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter with an invalid name");
+
         Program& gfx_program = programs_[program];  // get hold of program object
         gfx_program.insertParameter(parameter_name).set(&texture, &mip_level, 1);
         return kGfxResult_NoError;
@@ -2497,10 +2561,13 @@ public:
     {
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set a parameter onto an invalid program object");
+
         if (!parameter_name || !*parameter_name)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter with an invalid name");
+
         if (textures == nullptr && texture_count > 0)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter to an invalid array of textures");
+
         Program& gfx_program = programs_[program];  // get hold of program object
         gfx_program.insertParameter(parameter_name).set(textures, mip_levels, texture_count);
         return kGfxResult_NoError;
@@ -2510,8 +2577,10 @@ public:
     {
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set a parameter onto an invalid program object");
+
         if (!parameter_name || !*parameter_name)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter with an invalid name");
+
         Program& gfx_program = programs_[program];  // get hold of program object
         gfx_program.insertParameter(parameter_name).set(sampler_state);
         return kGfxResult_NoError;
@@ -2521,8 +2590,10 @@ public:
     {
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set a parameter onto an invalid program object");
+
         if (!parameter_name || !*parameter_name)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter with an invalid name");
+
         Program& gfx_program = programs_[program];  // get hold of program object
         gfx_program.insertParameter(parameter_name).set(acceleration_structure);
         return kGfxResult_NoError;
@@ -2532,10 +2603,13 @@ public:
     {
         if (!program_handles_.has_handle(program.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot set a parameter onto an invalid program object");
+
         if (!parameter_name || !*parameter_name)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter with an invalid name");
+
         if (!data && data_size > 0)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set a program parameter to a null pointer");
+
         Program& gfx_program = programs_[program];  // get hold of program object
         gfx_program.insertParameter(parameter_name).set(data, data_size);
         return kGfxResult_NoError;
@@ -2549,6 +2623,7 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a compute kernel using an invalid program object");
             return compute_kernel;
         }
+
         compute_kernel.type = GfxKernel::kType_Compute;
         Program const& gfx_program = programs_[program];
         entry_point = (entry_point ? entry_point : "main");
@@ -2584,6 +2659,7 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a graphics kernel using an invalid program object");
             return graphics_kernel;
         }
+
         GFX_ASSERT(define_count == 0 || defines != nullptr);
         uint32_t const draw_state_index = static_cast<uint32_t>(draw_state.handle & 0xFFFFFFFFull);
         DrawState const* gfx_draw_state = draw_states_.at(draw_state_index);
@@ -2592,6 +2668,7 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a graphics kernel using an invalid draw state object");
             return graphics_kernel;
         }
+
         Program const& gfx_program = programs_[program];
         graphics_kernel.type = GfxKernel::kType_Graphics;
         entry_point = (entry_point ? entry_point : "main");
@@ -2627,6 +2704,7 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a graphics kernel using an invalid program object");
             return graphics_kernel;
         }
+
         GFX_ASSERT(define_count == 0 || defines != nullptr);
         uint32_t const draw_state_index = static_cast<uint32_t>(draw_state.handle & 0xFFFFFFFFull);
         DrawState const* gfx_draw_state = draw_states_.at(draw_state_index);
@@ -2635,6 +2713,7 @@ public:
             GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot create a graphics kernel using an invalid draw state object");
             return graphics_kernel;
         }
+
         Program const& gfx_program = programs_[program];
         graphics_kernel.type = GfxKernel::kType_MeshShader;
         entry_point = (entry_point ? entry_point : "main");
@@ -2666,8 +2745,10 @@ public:
     {
         if (!kernel)
             return kGfxResult_NoError;
+
         if (!kernel_handles_.has_handle(kernel.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid kernel object");
+
         collect(kernels_[kernel]);  // release resources
         kernels_.erase(kernel); // destroy kernel
         kernel_handles_.free_handle(kernel.handle);
@@ -2678,6 +2759,7 @@ public:
     {
         if (!kernel_handles_.has_handle(kernel.handle))
             return nullptr; // invalid kernel object
+
         Kernel const& gfx_kernel = kernels_[kernel];
         GFX_ASSERT(gfx_kernel.num_threads_ != nullptr);
         return gfx_kernel.num_threads_;
@@ -2687,6 +2769,7 @@ public:
     {
         for (uint32_t i = 0; i < kernels_.size(); ++i)
             reloadKernel(kernels_.data()[i]);
+
         return kGfxResult_NoError;
     }
 
@@ -2694,21 +2777,33 @@ public:
     {
         if (!buffer_handles_.has_handle(dst.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy into an invalid buffer object");
+
         if (!buffer_handles_.has_handle(src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy from an invalid buffer object");
+
         if (dst.size != src.size)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy between buffer objects of different size");
+
         if (dst.cpu_access == kGfxCpuAccess_Write)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy to a buffer object with write CPU access");
+
         if (src.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy from a buffer object with read CPU access");
-        if (dst.size == 0) return kGfxResult_NoError;    // nothing to copy
+
+        if (dst.size == 0)
+            return kGfxResult_NoError;    // nothing to copy
+
         Buffer& gfx_dst = buffers_[dst], & gfx_src = buffers_[src];
         SetObjectName(gfx_dst, dst.name); SetObjectName(gfx_src, src.name);
         if (gfx_dst.resource_ == gfx_src.resource_)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy between two buffer objects that are pointing at the same resource; use an intermediate buffer");
-        if (dst.cpu_access == kGfxCpuAccess_None) transitionResource(gfx_dst, D3D12_RESOURCE_STATE_COPY_DEST);
-        if (src.cpu_access == kGfxCpuAccess_None) transitionResource(gfx_src, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+        if (dst.cpu_access == kGfxCpuAccess_None)
+            transitionResource(gfx_dst, D3D12_RESOURCE_STATE_COPY_DEST);
+
+        if (src.cpu_access == kGfxCpuAccess_None)
+            transitionResource(gfx_src, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->CopyBufferRegion(gfx_dst.resource_, gfx_dst.data_offset_,
             gfx_src.resource_, gfx_src.data_offset_,
@@ -2720,21 +2815,34 @@ public:
     {
         if (!buffer_handles_.has_handle(dst.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy into an invalid buffer object");
+
         if (!buffer_handles_.has_handle(src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy from an invalid buffer object");
+
         if (dst_offset + size > dst.size || src_offset + size > src.size)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy between regions that are not fully contained within their respective buffer objects");
+
         if (dst.cpu_access == kGfxCpuAccess_Write)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy to a buffer object with write CPU access");
+
         if (src.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy from a buffer object with read CPU access");
-        if (size == 0) return kGfxResult_NoError;    // nothing to copy
+
+        if (size == 0) 
+            return kGfxResult_NoError;    // nothing to copy
+
         Buffer& gfx_dst = buffers_[dst], & gfx_src = buffers_[src];
         SetObjectName(gfx_dst, dst.name); SetObjectName(gfx_src, src.name);
+
         if (gfx_dst.resource_ == gfx_src.resource_)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy between two buffer objects that are pointing at the same resource; use an intermediate buffer");
-        if (dst.cpu_access == kGfxCpuAccess_None) transitionResource(gfx_dst, D3D12_RESOURCE_STATE_COPY_DEST);
-        if (src.cpu_access == kGfxCpuAccess_None) transitionResource(gfx_src, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+        if (dst.cpu_access == kGfxCpuAccess_None)
+            transitionResource(gfx_dst, D3D12_RESOURCE_STATE_COPY_DEST);
+
+        if (src.cpu_access == kGfxCpuAccess_None)
+            transitionResource(gfx_src, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->CopyBufferRegion(gfx_dst.resource_, gfx_dst.data_offset_ + dst_offset,
             gfx_src.resource_, gfx_src.data_offset_ + src_offset,
@@ -2747,7 +2855,10 @@ public:
         GfxResult result = kGfxResult_NoError;
         if (!buffer_handles_.has_handle(buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot clear an invalid buffer object");
-        if (buffer.size == 0) return kGfxResult_NoError; // nothing to clear
+
+        if (buffer.size == 0)
+            return kGfxResult_NoError; // nothing to clear
+
         uint64_t const data_size = GFX_ALIGN(buffer.size, 4);
         uint64_t const num_uints = data_size / sizeof(uint32_t);
         switch (buffer.cpu_access)
@@ -2766,8 +2877,10 @@ public:
             D3D12_GPU_VIRTUAL_ADDRESS const gpu_addr = allocateConstantMemory(data_size, data);
             if (data == nullptr)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to clear buffer object");
+
             if (!issued_clear_buffer_warning_)
                 GFX_PRINTLN("Warning: It is inefficient to clear a buffer object with read CPU access; prefer a copy instead");
+
             issued_clear_buffer_warning_ = true;    // we've now warned the user...
             for (uint64_t i = 0; i < num_uints; ++i) ((uint32_t*)data)[i] = clear_value;
             Buffer& dst_buffer = buffers_[buffer], & src_buffer = buffers_[constant_buffer_pool_[fence_index_]];
@@ -2825,14 +2938,19 @@ public:
     {
         if (!texture_handles_.has_handle(dst.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy to an invalid texture object");
+
         if (!texture_handles_.has_handle(src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy from an invalid texture object");
+
         if (dst.type != src.type)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy between texture objects of different types");
+
         Texture& dst_texture = textures_[dst]; SetObjectName(dst_texture, dst.name);
         Texture& src_texture = textures_[src]; SetObjectName(src_texture, src.name);
+
         if (dst_texture.resource_ == src_texture.resource_)
             return kGfxResult_NoError;  // nothing to be copied
+
         transitionResource(dst_texture, D3D12_RESOURCE_STATE_COPY_DEST);
         transitionResource(src_texture, D3D12_RESOURCE_STATE_COPY_SOURCE);
         submitPipelineBarriers();   // transition our resources if needed
@@ -2844,10 +2962,13 @@ public:
     {
         if (!texture_handles_.has_handle(texture.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot clear an invalid texture object");
+
         if (mip_level >= texture.mip_levels)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot clear non-existing mip level %u", mip_level);
+
         if (slice >= (texture.is3D() ? GFX_MAX(texture.depth >> mip_level, 1u) : texture.depth))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot clear non-existing slice %u", slice);
+
         Texture& gfx_texture = textures_[texture];
         SetObjectName(gfx_texture, texture.name);
         if (IsDepthStencilFormat(texture.format))
@@ -2887,12 +3008,15 @@ public:
         GfxResult result;
         if (!texture_handles_.has_handle(texture.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy from an invalid texture object");
+
         if (!texture.is2D())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy from a non-2D texture object");
+
         Texture& gfx_texture = textures_[texture]; SetObjectName(gfx_texture, texture.name);
         D3D12_RESOURCE_DESC const resource_desc = gfx_texture.resource_->GetDesc();
         if (window_width_ != (uint32_t)resource_desc.Width || window_height_ != (uint32_t)resource_desc.Height)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy between texture objects that do not have the same dimensions");
+
         GfxKernel const bound_kernel = bound_kernel_;
         GFX_TRY(encodeBindKernel(copy_to_backbuffer_kernel_));
         setProgramTexture(copy_to_backbuffer_program_, "InputBuffer", texture, 0);
@@ -2901,8 +3025,10 @@ public:
             encodeBindKernel(bound_kernel);
         else
             bound_kernel_ = bound_kernel;
+
         if (result != kGfxResult_NoError)
             return GFX_SET_ERROR(result, "Failed to copy texture object to backbuffer");
+
         return kGfxResult_NoError;
     }
 
@@ -2910,12 +3036,16 @@ public:
     {
         if (!texture_handles_.has_handle(dst.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy to an invalid texture object");
+
         if (!buffer_handles_.has_handle(src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot copy from an invalid buffer object");
+
         if (!dst.is2D()) // TODO: implement for the other texture types (gboisse)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy from buffer to a non-2D texture object");
+
         if (src.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy from a buffer object with read CPU access");
+
         Texture& gfx_texture = textures_[dst]; SetObjectName(gfx_texture, dst.name);
         uint32_t num_rows[D3D12_REQ_MIP_LEVELS] = {};
         uint64_t row_sizes[D3D12_REQ_MIP_LEVELS] = {};
@@ -2927,22 +3057,26 @@ public:
         uint32_t const bytes_per_pixel = GetBytesPerPixel(dst.format);
         if (bytes_per_pixel == 0)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy to texture object of unsupported format");
+
         if (dst.format >= DXGI_FORMAT_BC1_TYPELESS && dst.format <= DXGI_FORMAT_BC5_SNORM)
         {
             pixels_per_block = 4 * 4;   // BC formats have 4*4 pixels per block
             pixels_per_block /= 4;  // we need to divide by 4 because GetCopyableFootprints introduces a *2 stride divides the rows /4
         }
+
         for (uint32_t mip_level = 0; mip_level < dst.mip_levels; ++mip_level)
         {
             Buffer* texture_upload_buffer = nullptr;
             if (buffer_offset >= src.size)
                 break;  // further mips aren't available
+
             GFX_ASSERT(num_rows[mip_level] == GFX_MAX(dst.height >> mip_level, 1u));
             uint32_t const buffer_row_pitch = (GFX_MAX(dst.width >> mip_level, 1u) * bytes_per_pixel) / pixels_per_block;
             uint32_t const texture_row_pitch = subresource_footprints[mip_level].Footprint.RowPitch;
             uint64_t const buffer_size = GFX_MAX(dst.height >> mip_level, 1u) * buffer_row_pitch;
             if (buffer_offset + buffer_size > src.size)
                 return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot copy to mip level %u from buffer object with insufficient storage", mip_level);
+
             if (buffer_row_pitch != texture_row_pitch || // we must respect the 256-byte pitch alignment
                 GFX_ALIGN(buffer_offset, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT) != buffer_offset)
             {
@@ -2955,32 +3089,37 @@ public:
                     texture_upload_buffer_ = createBuffer(texture_upload_buffer_size, nullptr, kGfxCpuAccess_None);
                     if (!texture_upload_buffer_)
                         return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to allocate memory to upload texture data");
+
                     texture_upload_buffer_.setName("gfx_TextureUploadBuffer");
                 }
                 texture_upload_buffer = &buffers_[texture_upload_buffer_];
                 SetObjectName(*texture_upload_buffer, texture_upload_buffer_.name);
                 Buffer& gfx_buffer = buffers_[src]; SetObjectName(gfx_buffer, src.name);
-                if (src.cpu_access == kGfxCpuAccess_None) transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+                if (src.cpu_access == kGfxCpuAccess_None)
+                    transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
                 transitionResource(*texture_upload_buffer, D3D12_RESOURCE_STATE_COPY_DEST);
                 submitPipelineBarriers();   // transition our resources if needed
                 for (uint32_t i = 0; i < num_rows[mip_level]; ++i)
                     command_list_->CopyBufferRegion(texture_upload_buffer->resource_, i * texture_row_pitch, gfx_buffer.resource_, i * buffer_row_pitch, buffer_row_pitch);
             }
             Buffer& gfx_buffer = buffers_[src]; SetObjectName(gfx_buffer, src.name);
-            if (texture_upload_buffer != nullptr) transitionResource(*texture_upload_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
-            else if (src.cpu_access == kGfxCpuAccess_None) transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            if (texture_upload_buffer != nullptr)
+                transitionResource(*texture_upload_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            else if (src.cpu_access == kGfxCpuAccess_None)
+                transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
             transitionResource(gfx_texture, D3D12_RESOURCE_STATE_COPY_DEST);
             submitPipelineBarriers();   // transition our resources if needed
             {
                 D3D12_TEXTURE_COPY_LOCATION dst_location = {};
                 D3D12_TEXTURE_COPY_LOCATION src_location = {};
                 dst_location.pResource = gfx_texture.resource_;
-                dst_location.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-                dst_location.SubresourceIndex = mip_level;  // copy to mip level
-                src_location.pResource = (texture_upload_buffer == nullptr ? gfx_buffer.resource_ : texture_upload_buffer->resource_);
-                src_location.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-                src_location.PlacedFootprint.Footprint = subresource_footprints[mip_level].Footprint;
-                src_location.PlacedFootprint.Offset = (texture_upload_buffer == nullptr ? buffer_offset : 0);
+                dst_location.Type                       = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                dst_location.SubresourceIndex           = mip_level;  // copy to mip level
+                src_location.pResource                  = (texture_upload_buffer == nullptr ? gfx_buffer.resource_ : texture_upload_buffer->resource_);
+                src_location.Type                       = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                src_location.PlacedFootprint.Footprint  = subresource_footprints[mip_level].Footprint;
+                src_location.PlacedFootprint.Offset     = (texture_upload_buffer == nullptr ? buffer_offset : 0);
                 command_list_->CopyTextureRegion(&dst_location, 0, 0, 0, &src_location, nullptr);
             }
             buffer_offset += buffer_size;   // advance the buffer offset
@@ -2993,9 +3132,13 @@ public:
         GfxResult result = kGfxResult_NoError;
         if (!texture_handles_.has_handle(texture.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot generate mips of an invalid texture object");
+
         if (!texture.is2D()) // TODO: implement for the other texture types (gboisse)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot generate mips of a non-2D texture object");
-        if (texture.mip_levels <= 1) return kGfxResult_NoError;  // nothing to generate
+
+        if (texture.mip_levels <= 1)
+            return kGfxResult_NoError;  // nothing to generate
+
         GfxKernel const bound_kernel = bound_kernel_;
         GFX_TRY(encodeBindKernel(generate_mips_kernel_));
         for (uint32_t mip_level = 1; mip_level < texture.mip_levels; ++mip_level)
@@ -3003,17 +3146,20 @@ public:
             setProgramTexture(generate_mips_program_, "InputBuffer", texture, mip_level - 1);
             setProgramTexture(generate_mips_program_, "OutputBuffer", texture, mip_level);
             uint32_t const* num_threads = getKernelNumThreads(generate_mips_kernel_);
-            uint32_t const num_groups_x = (GFX_MAX(texture.width >> mip_level, 1u) + num_threads[0] - 1) / num_threads[0];
+            uint32_t const num_groups_x = (GFX_MAX(texture.width  >> mip_level, 1u) + num_threads[0] - 1) / num_threads[0];
             uint32_t const num_groups_y = (GFX_MAX(texture.height >> mip_level, 1u) + num_threads[1] - 1) / num_threads[1];
             result = encodeDispatch(num_groups_x, num_groups_y, 1);
             if (result != kGfxResult_NoError) break;
         }
+
         if (kernel_handles_.has_handle(bound_kernel.handle))
             encodeBindKernel(bound_kernel);
         else
             bound_kernel_ = bound_kernel;
+
         if (result != kGfxResult_NoError)
             return GFX_SET_ERROR(result, "Failed to generate texture mips");
+
         return kGfxResult_NoError;
     }
 
@@ -3021,7 +3167,10 @@ public:
     {
         if (!kernel_handles_.has_handle(kernel.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot bind invalid kernel object");
-        if (bound_kernel_.handle == kernel.handle) return kGfxResult_NoError;    // already bound
+
+        if (bound_kernel_.handle == kernel.handle)
+            return kGfxResult_NoError;    // already bound
+
         Kernel const& gfx_kernel = kernels_[kernel];
         if (gfx_kernel.root_signature_ != nullptr && gfx_kernel.pipeline_state_ != nullptr)
         {
@@ -3039,10 +3188,13 @@ public:
     {
         if (!buffer_handles_.has_handle(index_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot bind index data from invalid buffer object");
+
         if (index_buffer.size > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot bind an index buffer object that's larger than 4GiB");
+
         if (index_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot bind an index buffer object that has read CPU access");
+
         bound_index_buffer_ = index_buffer;
         return kGfxResult_NoError;
     }
@@ -3051,10 +3203,13 @@ public:
     {
         if (!buffer_handles_.has_handle(vertex_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot bind vertex data from invalid buffer object");
+
         if (vertex_buffer.size > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot bind a vertex buffer object that's larger than 4GiB");
+
         if (vertex_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot bind a vertex buffer object that has read CPU access");
+
         bound_vertex_buffer_ = vertex_buffer;
         return kGfxResult_NoError;
     }
@@ -3063,10 +3218,11 @@ public:
     {
         if (isnan(x) || isnan(y) || isnan(width) || isnan(height))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set viewport using invalid floating-point numbers");
-        viewport_.x_ = x;
-        viewport_.y_ = y;
-        viewport_.width_ = width;
-        viewport_.height_ = height;
+
+        viewport_.x_        = x;
+        viewport_.y_        = y;
+        viewport_.width_    = width;
+        viewport_.height_   = height;
         return kGfxResult_NoError;
     }
 
@@ -3074,10 +3230,11 @@ public:
     {
         if (width < 0 || height < 0)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set scissor rect using negative width/height values");
-        scissor_rect_.x_ = x;
-        scissor_rect_.y_ = y;
-        scissor_rect_.width_ = width;
-        scissor_rect_.height_ = height;
+
+        scissor_rect_.x_        = x;
+        scissor_rect_.y_        = y;
+        scissor_rect_.width_    = width;
+        scissor_rect_.height_   = height;
         return kGfxResult_NoError;
     }
 
@@ -3085,13 +3242,17 @@ public:
     {
         if (vertex_count == 0 || instance_count == 0)
             return kGfxResult_NoError;  // nothing to draw
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw using a compute kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip draw call
+
         GFX_TRY(installShaderState(kernel));
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->DrawInstanced(vertex_count, instance_count, base_vertex, base_instance);
@@ -3102,13 +3263,17 @@ public:
     {
         if (index_count == 0 || instance_count == 0)
             return kGfxResult_NoError;  // nothing to draw
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw using a compute kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip draw call
+
         GFX_TRY(installShaderState(kernel, true));
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->DrawIndexedInstanced(index_count, instance_count, first_index, base_vertex, base_instance);
@@ -3119,17 +3284,23 @@ public:
     {
         if (args_count == 0)
             return kGfxResult_NoError;  // nothing to draw
+
         if (!buffer_handles_.has_handle(args_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot draw using an invalid arguments buffer object");
+
         if (args_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw using an arguments buffer object with read CPU access");
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw using a compute kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip multi-draw call
+
         GFX_TRY(populateDrawIdBuffer(args_count));
         Buffer& gfx_buffer = buffers_[args_buffer];
         SetObjectName(gfx_buffer, args_buffer.name);
@@ -3137,6 +3308,7 @@ public:
         GFX_TRY(installShaderState(kernel));
         if (args_buffer.cpu_access == kGfxCpuAccess_None)
             transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->ExecuteIndirect(multi_draw_signature_, args_count, gfx_buffer.resource_, gfx_buffer.data_offset_, nullptr, 0);
         return kGfxResult_NoError;
@@ -3146,17 +3318,23 @@ public:
     {
         if (args_count == 0)
             return kGfxResult_NoError;  // nothing to draw
+
         if (!buffer_handles_.has_handle(args_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot draw using an invalid arguments buffer object");
+
         if (args_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw using an arguments buffer object with read CPU access");
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw using a compute kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip multi-draw call
+
         GFX_TRY(populateDrawIdBuffer(args_count));
         Buffer& gfx_buffer = buffers_[args_buffer];
         SetObjectName(gfx_buffer, args_buffer.name);
@@ -3164,6 +3342,7 @@ public:
         GFX_TRY(installShaderState(kernel, true));
         if (args_buffer.cpu_access == kGfxCpuAccess_None)
             transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->ExecuteIndirect(multi_draw_indexed_signature_, args_count, gfx_buffer.resource_, gfx_buffer.data_offset_, nullptr, 0);
         return kGfxResult_NoError;
@@ -3173,13 +3352,17 @@ public:
     {
         if (!num_groups_x || !num_groups_y || !num_groups_z)
             return kGfxResult_NoError;  // nothing to dispatch
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (!kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip dispatch call
+
         GFX_TRY(installShaderState(kernel));
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->Dispatch(num_groups_x, num_groups_y, num_groups_z);
@@ -3190,21 +3373,27 @@ public:
     {
         if (!buffer_handles_.has_handle(args_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot dispatch using an invalid arguments buffer object");
+
         if (args_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using an arguments buffer object with read CPU access");
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (!kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip dispatch call
+
         Buffer& gfx_buffer = buffers_[args_buffer];
         SetObjectName(gfx_buffer, args_buffer.name);
         // TODO: might need multiple resource state flags... (gboisse)
         GFX_TRY(installShaderState(kernel));
         if (args_buffer.cpu_access == kGfxCpuAccess_None)
             transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
         submitPipelineBarriers();   // transition our resources if needed
         command_list_->ExecuteIndirect(dispatch_signature_, 1, gfx_buffer.resource_, gfx_buffer.data_offset_, nullptr, 0);
         return kGfxResult_NoError;
@@ -3214,23 +3403,30 @@ public:
     {
         if (args_count == 0)
             return kGfxResult_NoError;  // nothing to dispatch
+
         if (!buffer_handles_.has_handle(args_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot dispatch using an invalid arguments buffer object");
+
         if (args_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using an arguments buffer object with read CPU access");
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (!kernel.isCompute())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip multi-dispatch call
+
         Buffer& gfx_buffer = buffers_[args_buffer];
         SetObjectName(gfx_buffer, args_buffer.name);
         // TODO: might need multiple resource state flags... (gboisse)
         GFX_TRY(installShaderState(kernel));
         if (args_buffer.cpu_access == kGfxCpuAccess_None)
             transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
         submitPipelineBarriers();   // transition our resources if needed
         uint32_t root_parameter_index = 0xFFFFFFFFu, destination_offset;
         static uint64_t const dispatch_id_parameter = Hash("gfx_DispatchID");
@@ -3264,15 +3460,20 @@ public:
     {
         if (ms_command_list_ == nullptr)
             return kGfxResult_InvalidOperation;
+
         if (!num_groups_x || !num_groups_y || !num_groups_z)
             return kGfxResult_NoError;  // nothing to dispatch
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatchMesh when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (!kernel.isMeshShader())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatchMesh using a graphics kernel object or compute kernel object.");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip dispatch call
+
         GFX_TRY(installShaderState(kernel));
         submitPipelineBarriers();   // transition our resources if needed
         ms_command_list_->DispatchMesh(num_groups_x, num_groups_y, num_groups_z);
@@ -3283,23 +3484,30 @@ public:
     {
         if (ms_command_list_ == nullptr)
             return kGfxResult_InvalidOperation;
+
         if (!buffer_handles_.has_handle(args_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot dispatch using an invalid arguments buffer object");
+
         if (args_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using an arguments buffer object with read CPU access");
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (!kernel.isMeshShader())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object or compute kernel object.");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip dispatch call
+
         Buffer& gfx_buffer = buffers_[args_buffer];
         SetObjectName(gfx_buffer, args_buffer.name);
         // TODO: might need multiple resource state flags... (gboisse)
         GFX_TRY(installShaderState(kernel));
         if (args_buffer.cpu_access == kGfxCpuAccess_None)
             transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
         submitPipelineBarriers();   // transition our resources if needed
         ms_command_list_->ExecuteIndirect(dispatch_mesh_signature_, 1, gfx_buffer.resource_, gfx_buffer.data_offset_, nullptr, 0);
         return kGfxResult_NoError;
@@ -3309,19 +3517,26 @@ public:
     {
         if (ms_command_list_ == nullptr)
             return kGfxResult_InvalidOperation;
+
         if (args_count == 0)
             return kGfxResult_NoError;  // nothing to dispatch
+
         if (!buffer_handles_.has_handle(args_buffer.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot dispatch using an invalid arguments buffer object");
+
         if (args_buffer.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using an arguments buffer object with read CPU access");
+
         if (!kernel_handles_.has_handle(bound_kernel_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch when bound kernel object is invalid");
+
         Kernel& kernel = kernels_[bound_kernel_];
         if (!kernel.isMeshShader())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot dispatch using a graphics kernel object or compute kernel object");
+
         if (kernel.root_signature_ == nullptr || kernel.pipeline_state_ == nullptr)
             return kGfxResult_NoError;  // skip multi-dispatch call
+
         Buffer& gfx_buffer = buffers_[args_buffer];
         SetObjectName(gfx_buffer, args_buffer.name);
         // TODO: might need multiple resource state flags... (gboisse)
@@ -3369,8 +3584,10 @@ public:
     {
         if (!timestamp_query)
             return kGfxResult_NoError;
+
         if (!timestamp_query_handles_.has_handle(timestamp_query.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot destroy invalid timestamp query object");
+
         timestamp_queries_.erase(timestamp_query);  // destroy timestamp query
         timestamp_query_handles_.free_handle(timestamp_query.handle);
         return kGfxResult_NoError;
@@ -3390,13 +3607,16 @@ public:
     {
         if (!timestamp_query_handles_.has_handle(timestamp_query.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot begin a timed section using an invalid timestamp query object");
+
         TimestampQuery& gfx_timestamp_query = timestamp_queries_[timestamp_query];
         if (gfx_timestamp_query.was_begun_)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot begin a timed section on a timestamp query object that was already open");
+
         GFX_ASSERT(fence_index_ < ARRAYSIZE(timestamp_query_heaps_));   // should never happen
         TimestampQueryHeap& timestamp_query_heap = timestamp_query_heaps_[fence_index_];
         if (timestamp_query_heap.timestamp_queries_.find(timestamp_query.handle) != timestamp_query_heap.timestamp_queries_.end())
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot use a timestamp query object more than once per frame");
+
         uint32_t timestamp_query_index = (uint32_t)timestamp_query_heap.timestamp_queries_.size();
         uint64_t timestamp_query_heap_size = 2 * (timestamp_query_index + 1) * sizeof(uint64_t);
         if (timestamp_query_heap_size > timestamp_query_heap.query_buffer_.size)
@@ -3410,6 +3630,7 @@ public:
             device_->CreateQueryHeap(&query_heap_desc, IID_PPV_ARGS(&query_heap));
             if (query_heap == nullptr)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to create query heap for timestamp query object");
+
             GfxBuffer query_buffer = createBuffer(timestamp_query_heap_size, nullptr, kGfxCpuAccess_Read);
             if (!query_buffer)
             {
@@ -3435,9 +3656,11 @@ public:
     {
         if (!timestamp_query_handles_.has_handle(timestamp_query.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot end a timed section using an invalid timestamp query object");
+
         TimestampQuery& gfx_timestamp_query = timestamp_queries_[timestamp_query];
         if (!gfx_timestamp_query.was_begun_)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot end a timed section using a timestamp query object that was already closed");
+
         GFX_ASSERT(fence_index_ < ARRAYSIZE(timestamp_query_heaps_));   // should never happen
         TimestampQueryHeap& timestamp_query_heap = timestamp_query_heaps_[fence_index_];
         gfx_timestamp_query.was_begun_ = false; // timestamp query is now closed
@@ -3445,6 +3668,7 @@ public:
         GFX_ASSERT(it != timestamp_query_heap.timestamp_queries_.end());
         if (it == timestamp_query_heap.timestamp_queries_.end())
             return kGfxResult_InternalError;    // should never happen
+
         uint32_t const timestamp_query_index = (*it).second.first;
         command_list_->EndQuery(timestamp_query_heap.query_heap_, D3D12_QUERY_TYPE_TIMESTAMP, 2 * timestamp_query_index + 1);
         return kGfxResult_NoError;
@@ -3477,16 +3701,22 @@ public:
     {
         if (data_type < 0 || data_type >= kGfxDataType_Count)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot scan buffer object of unsupported data type `%u'", data_type);
+
         if (dst.size != src.size)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot scan if source and destination buffer objects aren't of the same size");
+
         if ((dst.size >> 2) > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot scan buffer object of more than 4 billion keys");
+
         if (dst.cpu_access == kGfxCpuAccess_Read || src.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot scan buffer object with read CPU access");
+
         if (!buffer_handles_.has_handle(dst.handle) || !buffer_handles_.has_handle(src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot scan when supplied buffer object is invalid");
+
         if (count != nullptr && !buffer_handles_.has_handle(count->handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot scan when supplied count buffer object is invalid");
+
         ScanKernels const& scan_kernels = getScanKernels(op_type, data_type, count);
         uint32_t const group_size           = 256;
         uint32_t const keys_per_thread      = 4;
@@ -3496,6 +3726,7 @@ public:
         uint32_t const num_groups_level_2   = (num_groups_level_1 + keys_per_group - 1) / keys_per_group;
         if (num_groups_level_2 > keys_per_group)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot scan buffer object of more than 1 billion keys"); // TODO: implement 3-level scan? (gboisse)
+
         uint64_t scratch_buffer_size = (num_groups_level_1 + num_groups_level_2 + 10) << 2;
         if (texture_upload_buffer_.size < scratch_buffer_size)
         {
@@ -3505,6 +3736,7 @@ public:
             texture_upload_buffer_ = createBuffer(scratch_buffer_size, nullptr, kGfxCpuAccess_None);
             if (!texture_upload_buffer_)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to allocate scratch memory for scan");
+
             texture_upload_buffer_.setName("gfx_TextureUploadBuffer");
         }
         GfxBuffer const scan_level_1_buffer         = createBufferRange(texture_upload_buffer_, 0, num_groups_level_1 << 2);
@@ -3540,21 +3772,26 @@ public:
                 setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", *count);
             else
                 setProgramConstants(scan_kernels.scan_program_, "g_Count", &num_keys, sizeof(num_keys));
+
             setProgramBuffer(scan_kernels.scan_program_, "g_PartialResults", scan_level_1_buffer);
             setProgramBuffer(scan_kernels.scan_program_, "g_InputKeys", src);
             encodeBindKernel(scan_kernels.reduce_kernel_);
+
             if (count != nullptr)
                 encodeDispatchIndirect(scan_level_1_args_buffer);
             else
                 encodeDispatch(num_groups_level_1, 1, 1);
+
             if (num_groups_level_1 > keys_per_group)
             {
                 if (count != nullptr)
                     setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", num_groups_level_1_buffer);
                 else
                     setProgramConstants(scan_kernels.scan_program_, "g_Count", &num_groups_level_1, sizeof(num_groups_level_1));
+
                 setProgramBuffer(scan_kernels.scan_program_, "g_PartialResults", scan_level_2_buffer);
                 setProgramBuffer(scan_kernels.scan_program_, "g_InputKeys", scan_level_1_buffer);
+
                 if (count != nullptr)
                     encodeDispatchIndirect(scan_level_2_args_buffer);
                 else
@@ -3564,6 +3801,7 @@ public:
                         setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", num_groups_level_2_buffer);
                     else
                         setProgramConstants(scan_kernels.scan_program_, "g_Count", &num_groups_level_2, sizeof(num_groups_level_2));
+
                     setProgramBuffer(scan_kernels.scan_program_, "g_InputKeys", scan_level_2_buffer);
                     setProgramBuffer(scan_kernels.scan_program_, "g_OutputKeys", scan_level_2_buffer);
                     encodeBindKernel(scan_kernels.scan_kernel_);
@@ -3578,6 +3816,7 @@ public:
             setProgramBuffer(scan_kernels.scan_program_, "g_OutputKeys", scan_level_1_buffer);
             setProgramBuffer(scan_kernels.scan_program_, "g_PartialResults", scan_level_2_buffer);
             encodeBindKernel(num_groups_level_1 > keys_per_group ? scan_kernels.scan_add_kernel_ : scan_kernels.scan_kernel_);
+
             if (count != nullptr)
                 encodeDispatchIndirect(scan_level_2_args_buffer);
             else
@@ -3587,17 +3826,23 @@ public:
             setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", *count);
         else
             setProgramConstants(scan_kernels.scan_program_, "g_Count", &num_keys, sizeof(num_keys));
+
         setProgramBuffer(scan_kernels.scan_program_, "g_InputKeys", src);
         setProgramBuffer(scan_kernels.scan_program_, "g_OutputKeys", dst);
         setProgramBuffer(scan_kernels.scan_program_, "g_PartialResults", scan_level_1_buffer);
         encodeBindKernel(num_keys > keys_per_group ? scan_kernels.scan_add_kernel_ : scan_kernels.scan_kernel_);
+
         if (count != nullptr)
             encodeDispatchIndirect(scan_level_1_args_buffer);
         else
             encodeDispatch(num_groups_level_1, 1, 1);
-        destroyBuffer(scan_level_1_buffer); destroyBuffer(scan_level_2_buffer);
-        destroyBuffer(scan_level_1_args_buffer); destroyBuffer(scan_level_2_args_buffer);
-        destroyBuffer(num_groups_level_1_buffer); destroyBuffer(num_groups_level_2_buffer);
+
+        destroyBuffer(scan_level_1_buffer);
+        destroyBuffer(scan_level_2_buffer);
+        destroyBuffer(scan_level_1_args_buffer);
+        destroyBuffer(scan_level_2_args_buffer);
+        destroyBuffer(num_groups_level_1_buffer);
+        destroyBuffer(num_groups_level_2_buffer);
         if (kernel_handles_.has_handle(bound_kernel.handle))
             encodeBindKernel(bound_kernel);
         else
@@ -3609,16 +3854,22 @@ public:
     {
         if (data_type < 0 || data_type >= kGfxDataType_Count)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot reduce buffer object of unsupported data type `%u'", data_type);
+
         if (dst.size < 4)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot reduce if destination buffer object isn't at least 4 bytes large");
+
         if ((src.size >> 2) > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot reduce buffer object of more than 4 billion keys");
+
         if (dst.cpu_access == kGfxCpuAccess_Read || src.cpu_access == kGfxCpuAccess_Read)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot reduce buffer object with read CPU access");
+
         if (!buffer_handles_.has_handle(dst.handle) || !buffer_handles_.has_handle(src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot reduce when supplied buffer object is invalid");
+
         if (count != nullptr && !buffer_handles_.has_handle(count->handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot reduce when supplied count buffer object is invalid");
+
         ScanKernels const& scan_kernels = getScanKernels(op_type, data_type, count);
         uint32_t const group_size           = 256;
         uint32_t const keys_per_thread      = 4;
@@ -3628,6 +3879,7 @@ public:
         uint32_t const num_groups_level_2   = (num_groups_level_1 + keys_per_group - 1) / keys_per_group;
         if (num_groups_level_2 > keys_per_group)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot reduce buffer object of more than 1 billion keys");   // TODO: implement 3-level reduction? (gboisse)
+
         uint64_t scratch_buffer_size = (num_groups_level_1 + num_groups_level_2 + 10) << 2;
         if (texture_upload_buffer_.size < scratch_buffer_size)
         {
@@ -3673,26 +3925,32 @@ public:
                 setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", *count);
             else
                 setProgramConstants(scan_kernels.scan_program_, "g_Count", &num_keys, sizeof(num_keys));
+
             setProgramBuffer(scan_kernels.scan_program_, "g_PartialResults", reduce_level_1_buffer);
             setProgramBuffer(scan_kernels.scan_program_, "g_InputKeys", src);
+
             if (count != nullptr)
                 encodeDispatchIndirect(reduce_level_1_args_buffer);
             else
                 encodeDispatch(num_groups_level_1, 1, 1);
+
             if (num_groups_level_1 > keys_per_group)
             {
                 if (count != nullptr)
                     setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", num_groups_level_1_buffer);
                 else
                     setProgramConstants(scan_kernels.scan_program_, "g_Count", &num_groups_level_1, sizeof(num_groups_level_1));
+
                 setProgramBuffer(scan_kernels.scan_program_, "g_PartialResults", reduce_level_2_buffer);
                 setProgramBuffer(scan_kernels.scan_program_, "g_InputKeys", reduce_level_1_buffer);
+
                 if (count != nullptr)
                     encodeDispatchIndirect(reduce_level_2_args_buffer);
                 else
                     encodeDispatch(num_groups_level_2, 1, 1);
             }
         }
+
         if (count != nullptr)
             setProgramBuffer(scan_kernels.scan_program_, "g_CountBuffer", num_keys > keys_per_group ? num_groups_level_1 > keys_per_group ? num_groups_level_2_buffer : num_groups_level_1_buffer : *count);
         else
@@ -3706,6 +3964,7 @@ public:
         destroyBuffer(num_groups_level_2_buffer);
         destroyBuffer(reduce_level_1_args_buffer);
         destroyBuffer(reduce_level_2_args_buffer);
+
         if (kernel_handles_.has_handle(bound_kernel.handle))
             encodeBindKernel(bound_kernel);
         else
@@ -3717,20 +3976,28 @@ public:
     {
         if (keys_dst.size != keys_src.size)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot sort if source and destination buffer objects aren't of the same size");
+
         if (values_dst != nullptr && keys_dst.size != values_dst->size)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot sort if keys and values buffer objects aren't of the same size");
+
         if (values_dst != nullptr && values_src != nullptr && values_dst->size != values_src->size)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot sort if source and destination buffer objects aren't of the same size");
+
         if ((keys_dst.size >> 2) > 0xFFFFFFFFull)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot sort buffer object of more than 4 billion keys");
+
         if (!buffer_handles_.has_handle(keys_dst.handle) || !buffer_handles_.has_handle(keys_src.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot sort keys when supplied buffer object is invalid");
+
         if ((values_dst != nullptr && !buffer_handles_.has_handle(values_dst->handle)) || (values_src != nullptr && !buffer_handles_.has_handle(values_src->handle)))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot sort values when supplied buffer object is invalid");
+
         if ((values_dst != nullptr && values_src == nullptr) || (values_dst == nullptr && values_src != nullptr))
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot sort values if source or destination isn't a valid buffer object");
+
         if (count != nullptr && !buffer_handles_.has_handle(count->handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot sort when supplied count buffer object is invalid");
+
         SortKernels const& sort_kernels = getSortKernels(values_src != nullptr, count);
         uint32_t const group_size           = 256;
         uint32_t const keys_per_thread      = 4;
@@ -3749,6 +4016,7 @@ public:
             sort_scratch_buffer_ = createBuffer(scratch_buffer_size, nullptr, kGfxCpuAccess_None);
             if (!sort_scratch_buffer_)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to allocate scratch memory for sort");
+
             sort_scratch_buffer_.setName("gfx_SortScratchBuffer");
         }
         GfxBuffer const scratch_keys        = createBufferRange(sort_scratch_buffer_, 0, num_keys << 2);
@@ -3765,6 +4033,7 @@ public:
             destroyBuffer(scratch_values);
             return GFX_SET_ERROR(kGfxResult_InternalError, "Unable to create scratch memory for sort");
         }
+
         GfxKernel const bound_kernel = bound_kernel_;
         if (count == nullptr)
             setProgramConstants(sort_kernels.sort_program_, "g_Count", &num_keys, sizeof(num_keys));
@@ -3815,6 +4084,7 @@ public:
     {
         RECT window_rect = {};
         GetClientRect(window_, &window_rect);
+
         D3D12_RESOURCE_BARRIER resource_barrier = {};
         resource_barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         resource_barrier.Transition.pResource   = back_buffers_[fence_index_];
@@ -3828,9 +4098,11 @@ public:
             {
                 if (!timestamp_query_handles_.has_handle((*it).second.second.handle))
                     continue;   // timestamp query object was destroyed
+
                 TimestampQuery const& timestamp_query = timestamp_queries_[(*it).second.second];
                 if (timestamp_query.was_begun_)  // was the query not closed properly?
                     encodeEndTimestampQuery((*it).second.second);
+
                 GFX_ASSERT(!timestamp_query.was_begun_);
             }
             uint32_t const timestamp_query_count = (uint32_t)timestamp_query_heaps_[fence_index_].timestamp_queries_.size();
@@ -3850,13 +4122,16 @@ public:
         uint32_t const window_width     = GFX_MAX(window_rect.right,  (LONG)8);
         uint32_t const window_height    = GFX_MAX(window_rect.bottom, (LONG)8);
         fence_index_ = swap_chain_->GetCurrentBackBufferIndex();
+
         if (window_width != window_width_ || window_height != window_height_)
             resizeCallback(window_width, window_height);    // reset fence index
+
         if (fences_[fence_index_]->GetCompletedValue() < fence_values_[fence_index_])
         {
             fences_[fence_index_]->SetEventOnCompletion(fence_values_[fence_index_], fence_event_);
             WaitForSingleObject(fence_event_, INFINITE);    // wait for GPU to complete
         }
+
         bound_kernel_ = {};
         command_allocators_[fence_index_]->Reset();
         command_list_->Reset(command_allocators_[fence_index_], nullptr);
@@ -3896,6 +4171,7 @@ public:
         command_list_->Close(); // close command list for submit
         ID3D12CommandList* const command_lists[] = { command_list_ };
         command_queue_->ExecuteCommandLists(ARRAYSIZE(command_lists), command_lists);
+
         GFX_TRY(sync());    // make sure GPU has gone through all pending work
         command_allocators_[fence_index_]->Reset();
         command_list_->Reset(command_allocators_[fence_index_], nullptr);
@@ -3951,12 +4227,16 @@ public:
         DrawState* gfx_draw_state = draw_states_.at(draw_state_index);
         if (!gfx_draw_state)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set color target on an invalid draw state object");
+
         if (target_index >= kGfxConstant_MaxRenderTarget)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot have more than %u render targets in draw state object", (uint32_t)kGfxConstant_MaxRenderTarget);
+
         if (mip_level >= texture.mip_levels)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw to mip level that does not exist in texture object");
+
         if (slice >= (texture.is3D() ? GFX_MAX(texture.depth >> mip_level, 1u) : texture.depth))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw to slice that does not exist in texture object");
+
         gfx_draw_state->draw_state_.color_targets_[target_index].texture_ = texture;
         gfx_draw_state->draw_state_.color_targets_[target_index].mip_level = mip_level;
         gfx_draw_state->draw_state_.color_targets_[target_index].slice = slice;
@@ -3969,10 +4249,13 @@ public:
         DrawState* gfx_draw_state = draw_states_.at(draw_state_index);
         if (!gfx_draw_state)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set depth/stencil target on an invalid draw state object");
+
         if (mip_level >= texture.mip_levels)
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw to mip level that does not exist in texture object");
+
         if (slice >= (texture.is3D() ? GFX_MAX(texture.depth >> mip_level, 1u) : texture.depth))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw to slice that does not exist in texture object");
+
         gfx_draw_state->draw_state_.depth_stencil_target_.texture_ = texture;
         gfx_draw_state->draw_state_.depth_stencil_target_.mip_level = mip_level;
         gfx_draw_state->draw_state_.depth_stencil_target_.slice = slice;
@@ -3985,6 +4268,7 @@ public:
         DrawState* gfx_draw_state = draw_states_.at(draw_state_index);
         if (!gfx_draw_state)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set cull mode on an invalid draw state object");
+
         gfx_draw_state->draw_state_.raster_state_.cull_mode_ = cull_mode;
         return kGfxResult_NoError;
     }
@@ -3995,6 +4279,7 @@ public:
         DrawState* gfx_draw_state = draw_states_.at(draw_state_index);
         if (!gfx_draw_state)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set fill mode on an invalid draw state object");
+
         gfx_draw_state->draw_state_.raster_state_.fill_mode_ = fill_mode;
         return kGfxResult_NoError;
     }
@@ -4005,6 +4290,7 @@ public:
         DrawState* gfx_draw_state = draw_states_.at(draw_state_index);
         if (!gfx_draw_state)
             return GFX_SET_ERROR(kGfxResult_InvalidParameter, "Cannot set blend mode on an invalid draw state object");
+
         gfx_draw_state->draw_state_.blend_state_.src_blend_ = src_blend;
         gfx_draw_state->draw_state_.blend_state_.dst_blend_ = dst_blend;
         gfx_draw_state->draw_state_.blend_state_.blend_op_ = blend_op;
@@ -4020,7 +4306,9 @@ private:
     {
         uint64_t hash = 0;
         GFX_ASSERT(value != nullptr);
-        if (value == nullptr) return hash;
+        if (value == nullptr)
+            return hash;
+
         while (*value)
         {
             hash = static_cast<uint64_t>(*value) + (hash << 6) + (hash << 16) - hash;
@@ -4036,6 +4324,7 @@ private:
         GFX_ASSERT(name != nullptr);
         if (!*name || (object.Object::flags_ & Object::kFlag_Named) != 0)
             return; // no name or already named
+
         mbstowcs(buffer, name, ARRAYSIZE(buffer));
         object.Object::flags_ |= Object::kFlag_Named;
         GFX_ASSERT(object.resource_ != nullptr);
@@ -4057,7 +4346,7 @@ private:
         if (shader_bytecode)
         {
             result.pShaderBytecode = shader_bytecode->GetBufferPointer();
-            result.BytecodeLength = shader_bytecode->GetBufferSize();
+            result.BytecodeLength  = shader_bytecode->GetBufferSize();
         }
         return result;
     }
@@ -4065,7 +4354,9 @@ private:
     uint32_t GetMipLevel(Program::Parameter const& parameter, uint32_t texture_index)
     {
         GFX_ASSERT(parameter.type_ == Program::Parameter::kType_Image);
-        if (parameter.type_ != Program::Parameter::kType_Image) return 0;
+        if (parameter.type_ != Program::Parameter::kType_Image)
+            return 0;
+
         GFX_ASSERT(texture_index < parameter.data_.image_.texture_count);
         return (parameter.data_.image_.mip_levels_ != nullptr ?
             parameter.data_.image_.mip_levels_[texture_index] : 0);
@@ -5036,6 +5327,7 @@ private:
         if (!program_handles_.has_handle(kernel.program_.handle))
             return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot %s with a %s kernel pointing to an invalid program object",
                 is_compute ? "dispatch" : "draw", is_compute ? "compute" : "graphics");
+
         if (!is_compute)
         {
             uint32_t color_target_count = 0;
@@ -5050,6 +5342,7 @@ private:
                     GfxTexture const& texture = kernel.draw_state_.color_targets_[i].texture_;
                     if (!texture_handles_.has_handle(texture.handle))
                         return GFX_SET_ERROR(kGfxResult_InvalidOperation, "Cannot draw to an invalid texture object; found at color target %u", i);
+
                     Texture& gfx_texture = textures_[texture]; SetObjectName(gfx_texture, texture.name);
                     GFX_TRY(ensureTextureHasRenderTargetView(texture, gfx_texture, kernel.draw_state_.color_targets_[i].mip_level, kernel.draw_state_.color_targets_[i].slice));
                     GFX_ASSERT(gfx_texture.rtv_descriptor_slots_[kernel.draw_state_.color_targets_[i].mip_level][kernel.draw_state_.color_targets_[i].slice] != 0xFFFFFFFFu);
@@ -5202,8 +5495,12 @@ private:
         for (uint32_t i = 0; i < kernel.parameter_count_; ++i)
         {
             Kernel::Parameter& parameter = kernel.parameters_[i];
-            if (parameter.type_ >= Kernel::Parameter::kType_Count) continue;
-            if (parameter.type_ == Kernel::Parameter::kType_Constants) continue;
+            if (parameter.type_ >= Kernel::Parameter::kType_Count)
+                continue;
+
+            if (parameter.type_ == Kernel::Parameter::kType_Constants)
+                continue;
+
             if (parameter.type_ == Kernel::Parameter::kType_Sampler)
             {
                 uint32_t descriptor_slot = dummy_descriptors_[parameter.type_];
@@ -5212,12 +5509,23 @@ private:
                     if (parameter.parameter_->type_ != Program::Parameter::kType_SamplerState)
                     {
                         if (parameter.id_ != parameter.parameter_->id_)
-                            GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a sampler state object", parameter.parameter_->getTypeName(), parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                            GFX_PRINT_ERROR(
+                                kGfxResult_InvalidParameter,
+                                "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a sampler state object",
+                                parameter.parameter_->getTypeName(),
+                                parameter.parameter_->name_.c_str(),
+                                program.file_path_.c_str(),
+                                program.file_name_.c_str());
                     }
                     else if (!sampler_state_handles_.has_handle(parameter.parameter_->data_.sampler_state_.handle))
                     {
                         if (parameter.parameter_->data_.sampler_state_.handle != 0)
-                            GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Found invalid sampler state object for parameter `%s' of program `%s/%s'; cannot bind to pipeline", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                            GFX_PRINT_ERROR(
+                                kGfxResult_InvalidOperation,
+                                "Found invalid sampler state object for parameter `%s' of program `%s/%s'; cannot bind to pipeline",
+                                parameter.parameter_->name_.c_str(),
+                                program.file_path_.c_str(),
+                                program.file_name_.c_str());
                     }
                     else
                     {
@@ -5248,7 +5556,14 @@ private:
                 {
                     if (parameter.parameter_->type_ != Program::Parameter::kType_Buffer)
                     {
-                        GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a buffer object", parameter.parameter_->getTypeName(), parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINT_ERROR(
+                            kGfxResult_InvalidParameter,
+                            "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a buffer object",
+                            parameter.parameter_->getTypeName(),
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5258,7 +5573,13 @@ private:
                     if (!buffer_handles_.has_handle(buffer.handle))
                     {
                         if (buffer.handle != 0)
-                            GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Found invalid buffer object for parameter `%s' of program `%s/%s'; cannot bind to pipeline", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                            GFX_PRINT_ERROR(
+                                kGfxResult_InvalidOperation,
+                                "Found invalid buffer object for parameter `%s' of program `%s/%s'; cannot bind to pipeline",
+                                parameter.parameter_->name_.c_str(),
+                                program.file_path_.c_str(),
+                                program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5266,7 +5587,13 @@ private:
                     }
                     if (buffer.cpu_access == kGfxCpuAccess_Read)
                     {
-                        GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind buffer object with read CPU access as a shader resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINT_ERROR(
+                            kGfxResult_InvalidOperation,
+                            "Cannot bind buffer object with read CPU access as a shader resource for parameter `%s' of program `%s/%s'",
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5274,7 +5601,13 @@ private:
                     }
                     if (buffer.stride == 0)
                     {
-                        GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind buffer object with a stride of 0 as a shader resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINT_ERROR(
+                            kGfxResult_InvalidOperation,
+                            "Cannot bind buffer object with a stride of 0 as a shader resource for parameter `%s' of program `%s/%s'",
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5291,9 +5624,18 @@ private:
                     SetObjectName(gfx_buffer, buffer.name);
                     if (buffer.cpu_access == kGfxCpuAccess_None)
                         transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-                    if (!invalidate_descriptor) break;   // already up to date
+
+                    if (!invalidate_descriptor)
+                        break;   // already up to date
+
                     if (buffer.stride != GFX_ALIGN(buffer.stride, 4))
-                        GFX_PRINTLN("Warning: Encountered a buffer stride of %u that isn't 4-byte aligned for parameter `%s' of program `%s/%s'; is this intentional?", buffer.stride, parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINTLN(
+                            "Warning: Encountered a buffer stride of %u that isn't 4-byte aligned for parameter `%s' of program `%s/%s'; is this intentional?",
+                            buffer.stride,
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                     D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
                     srv_desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
                     srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -5307,7 +5649,14 @@ private:
                 {
                     if (parameter.parameter_->type_ != Program::Parameter::kType_Buffer)
                     {
-                        GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a buffer object", parameter.parameter_->getTypeName(), parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINT_ERROR(
+                            kGfxResult_InvalidParameter,
+                            "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a buffer object",
+                            parameter.parameter_->getTypeName(),
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5317,7 +5666,13 @@ private:
                     if (!buffer_handles_.has_handle(buffer.handle))
                     {
                         if (buffer.handle != 0)
-                            GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Found invalid buffer object for parameter `%s' of program `%s/%s'; cannot bind to pipeline", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                            GFX_PRINT_ERROR(
+                                kGfxResult_InvalidOperation,
+                                "Found invalid buffer object for parameter `%s' of program `%s/%s'; cannot bind to pipeline",
+                                parameter.parameter_->name_.c_str(),
+                                program.file_path_.c_str(),
+                                program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5325,7 +5680,13 @@ private:
                     }
                     if (buffer.cpu_access != kGfxCpuAccess_None)
                     {
-                        GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind buffer object with read/write CPU access as a RW shader resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINT_ERROR(
+                            kGfxResult_InvalidOperation,
+                            "Cannot bind buffer object with read/write CPU access as a RW shader resource for parameter `%s' of program `%s/%s'",
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5333,7 +5694,13 @@ private:
                     }
                     if (buffer.stride == 0)
                     {
-                        GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind buffer object with a stride of 0 as a RW shader resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINT_ERROR(
+                            kGfxResult_InvalidOperation,
+                            "Cannot bind buffer object with a stride of 0 as a RW shader resource for parameter `%s' of program `%s/%s'",
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5349,9 +5716,17 @@ private:
                     Buffer& gfx_buffer = buffers_[buffer];
                     SetObjectName(gfx_buffer, buffer.name);
                     transitionResource(gfx_buffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                    if (!invalidate_descriptor) break;   // already up to date
+                    if (!invalidate_descriptor)
+                        break;   // already up to date
+
                     if (buffer.stride != GFX_ALIGN(buffer.stride, 4))
-                        GFX_PRINTLN("Warning: Encountered a buffer stride of %u that isn't 4-byte aligned for parameter `%s' of program `%s/%s'; is this intentional?", buffer.stride, parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                        GFX_PRINTLN(
+                            "Warning: Encountered a buffer stride of %u that isn't 4-byte aligned for parameter `%s' of program `%s/%s'; is this intentional?",
+                            buffer.stride,
+                            parameter.parameter_->name_.c_str(),
+                            program.file_path_.c_str(),
+                            program.file_name_.c_str());
+
                     D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {};
                     uav_desc.ViewDimension              = D3D12_UAV_DIMENSION_BUFFER;
                     uav_desc.Buffer.FirstElement        = gfx_buffer.data_offset_ / buffer.stride;
@@ -5371,9 +5746,18 @@ private:
                         if (j >= parameter.parameter_->data_.image_.texture_count ||
                             parameter.parameter_->type_ != Program::Parameter::kType_Image)
                         {
-                            if (!invalidate_descriptor) continue;    // already up to date
+                            if (!invalidate_descriptor)
+                                continue;    // already up to date
+
                             if (j == 0 && parameter.parameter_->type_ != Program::Parameter::kType_Image)
-                                GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a texture object", parameter.parameter_->getTypeName(), parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidParameter,
+                                    "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a texture object",
+                                    parameter.parameter_->getTypeName(),
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                             device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5382,16 +5766,32 @@ private:
                             if (!texture_handles_.has_handle(texture.handle))
                             {
                                 if (texture.handle != 0)
-                                    GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Found invalid texture object for parameter `%s' of program `%s/%s'; cannot bind to pipeline", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
-                                if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr) continue;    // already up to date
+                                    GFX_PRINT_ERROR(
+                                        kGfxResult_InvalidOperation,
+                                        "Found invalid texture object for parameter `%s' of program `%s/%s'; cannot bind to pipeline",
+                                        parameter.parameter_->name_.c_str(),
+                                        program.file_path_.c_str(),
+                                        program.file_name_.c_str());
+
+                                if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr)
+                                    continue;    // already up to date
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 parameter.bound_textures_[j] = nullptr; // invalidate cached pointer
                                 continue;   // user set an invalid texture object
                             }
                             if (!texture.is2D())
                             {
-                                if (!invalidate_descriptor) continue;    // already up to date
-                                GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind non-2D texture object as a 2D sampler resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                if (!invalidate_descriptor)
+                                    continue;    // already up to date
+
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidOperation,
+                                    "Cannot bind non-2D texture object as a 2D sampler resource for parameter `%s' of program `%s/%s'",
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader SRV
                             }
@@ -5401,8 +5801,16 @@ private:
                             D3D12_RESOURCE_DESC const& resource_desc = gfx_texture.resource_->GetDesc();
                             if (mip_level >= (uint32_t)resource_desc.MipLevels)
                             {
-                                if (!invalidate_descriptor) continue;    // already up to date
-                                GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind out of bounds mip level of 2D texture object for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                if (!invalidate_descriptor)
+                                    continue;    // already up to date
+
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidOperation,
+                                    "Cannot bind out of bounds mip level of 2D texture object for parameter `%s' of program `%s/%s'",
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5431,9 +5839,18 @@ private:
                         if (j >= parameter.parameter_->data_.image_.texture_count ||
                             parameter.parameter_->type_ != Program::Parameter::kType_Image)
                         {
-                            if (!invalidate_descriptor) continue;    // already up to date
+                            if (!invalidate_descriptor)
+                                continue;    // already up to date
+
                             if (j == 0 && parameter.parameter_->type_ != Program::Parameter::kType_Image)
-                                GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a texture object", parameter.parameter_->getTypeName(), parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidParameter,
+                                    "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a texture object",
+                                    parameter.parameter_->getTypeName(),
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                             device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5442,16 +5859,32 @@ private:
                             if (!texture_handles_.has_handle(texture.handle))
                             {
                                 if (texture.handle != 0)
-                                    GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Found invalid texture object for parameter `%s' of program `%s/%s'; cannot bind to pipeline", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
-                                if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr) continue;    // already up to date
+                                    GFX_PRINT_ERROR(
+                                        kGfxResult_InvalidOperation,
+                                        "Found invalid texture object for parameter `%s' of program `%s/%s'; cannot bind to pipeline",
+                                        parameter.parameter_->name_.c_str(),
+                                        program.file_path_.c_str(),
+                                        program.file_name_.c_str());
+
+                                if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr)
+                                    continue;    // already up to date
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 parameter.bound_textures_[j] = nullptr; // invalidate cached pointer
                                 continue;   // user set an invalid texture object
                             }
                             if (!texture.is2D())
                             {
-                                if (!invalidate_descriptor) continue;    // already up to date
-                                GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind non-2D texture object as a 2D image resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                if (!invalidate_descriptor)
+                                    continue;    // already up to date
+
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidOperation,
+                                    "Cannot bind non-2D texture object as a 2D image resource for parameter `%s' of program `%s/%s'",
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader UAV
                             }
@@ -5461,8 +5894,16 @@ private:
                             D3D12_RESOURCE_DESC const& resource_desc = gfx_texture.resource_->GetDesc();
                             if (mip_level >= (uint32_t)resource_desc.MipLevels)
                             {
-                                if (!invalidate_descriptor) continue;    // already up to date
-                                GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind out of bounds mip level of 2D texture object for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                if (!invalidate_descriptor)
+                                    continue;    // already up to date
+
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidOperation,
+                                    "Cannot bind out of bounds mip level of 2D texture object for parameter `%s' of program `%s/%s'",
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5490,9 +5931,18 @@ private:
                         if (j >= parameter.parameter_->data_.image_.texture_count ||
                             parameter.parameter_->type_ != Program::Parameter::kType_Image)
                         {
-                            if (!invalidate_descriptor) continue;    // already up to date
+                            if (!invalidate_descriptor)
+                                continue;    // already up to date
+
                             if (j == 0 && parameter.parameter_->type_ != Program::Parameter::kType_Image)
-                                GFX_PRINT_ERROR(kGfxResult_InvalidParameter, "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a texture object", parameter.parameter_->getTypeName(), parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidParameter,
+                                    "Found unrelated type `%s' for parameter `%s' of program `%s/%s'; expected a texture object",
+                                    parameter.parameter_->getTypeName(),
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                             device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5501,16 +5951,32 @@ private:
                             if (!texture_handles_.has_handle(texture.handle))
                             {
                                 if (texture.handle != 0)
-                                    GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Found invalid texture object for parameter `%s' of program `%s/%s'; cannot bind to pipeline", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
-                                if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr) continue;    // already up to date
+                                    GFX_PRINT_ERROR(
+                                        kGfxResult_InvalidOperation,
+                                        "Found invalid texture object for parameter `%s' of program `%s/%s'; cannot bind to pipeline",
+                                        parameter.parameter_->name_.c_str(),
+                                        program.file_path_.c_str(),
+                                        program.file_name_.c_str());
+
+                                if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr)
+                                    continue;    // already up to date
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 parameter.bound_textures_[j] = nullptr; // invalidate cached pointer
                                 continue;   // user set an invalid texture object
                             }
                             if (!texture.is2DArray())
                             {
-                                if (!invalidate_descriptor) continue;    // already up to date
-                                GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind non-2D array texture object as a 2D sampler array resource for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                if (!invalidate_descriptor)
+                                    continue;    // already up to date
+
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidOperation,
+                                    "Cannot bind non-2D array texture object as a 2D sampler array resource for parameter `%s' of program `%s/%s'",
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader SRV
                             }
@@ -5520,8 +5986,16 @@ private:
                             D3D12_RESOURCE_DESC const& resource_desc = gfx_texture.resource_->GetDesc();
                             if (mip_level >= (uint32_t)resource_desc.MipLevels)
                             {
-                                if (!invalidate_descriptor) continue;    // already up to date
-                                GFX_PRINT_ERROR(kGfxResult_InvalidOperation, "Cannot bind out of bounds mip level of 2D array texture object for parameter `%s' of program `%s/%s'", parameter.parameter_->name_.c_str(), program.file_path_.c_str(), program.file_name_.c_str());
+                                if (!invalidate_descriptor)
+                                    continue;    // already up to date
+
+                                GFX_PRINT_ERROR(
+                                    kGfxResult_InvalidOperation,
+                                    "Cannot bind out of bounds mip level of 2D array texture object for parameter `%s' of program `%s/%s'",
+                                    parameter.parameter_->name_.c_str(),
+                                    program.file_path_.c_str(),
+                                    program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5551,7 +6025,9 @@ private:
                         if (j >= parameter.parameter_->data_.image_.texture_count ||
                             parameter.parameter_->type_ != Program::Parameter::kType_Image)
                         {
-                            if (!invalidate_descriptor) continue;    // already up to date
+                            if (!invalidate_descriptor)
+                                continue;    // already up to date
+
                             if (j == 0 && parameter.parameter_->type_ != Program::Parameter::kType_Image)
                                 GFX_PRINT_ERROR(
                                     kGfxResult_InvalidParameter,
@@ -5560,6 +6036,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                             device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5574,6 +6051,7 @@ private:
                                         parameter.parameter_->name_.c_str(),
                                         program.file_path_.c_str(),
                                         program.file_name_.c_str());
+
                                 if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr)
                                     continue;    // already up to date
 
@@ -5592,6 +6070,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader UAV
                             }
@@ -5610,6 +6089,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5649,6 +6129,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                             device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5663,6 +6144,7 @@ private:
                                         parameter.parameter_->name_.c_str(),
                                         program.file_path_.c_str(),
                                         program.file_name_.c_str());
+
                                 if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr) 
                                     continue;    // already up to date
                                 
@@ -5681,6 +6163,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader SRV
                             }
@@ -5699,6 +6182,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5738,6 +6222,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                             device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5752,6 +6237,7 @@ private:
                                         parameter.parameter_->name_.c_str(),
                                         program.file_path_.c_str(),
                                         program.file_name_.c_str());
+
                                 if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr)
                                     continue;    // already up to date
                                 
@@ -5770,6 +6256,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader UAV
                             }
@@ -5788,6 +6275,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateUnorderedAccessView(nullptr, nullptr, &dummy_uav_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5818,6 +6306,7 @@ private:
                         {
                             if (!invalidate_descriptor)
                                 continue;    // already up to date
+
                             if (j == 0 && parameter.parameter_->type_ != Program::Parameter::kType_Image)
                                 GFX_PRINT_ERROR(
                                     kGfxResult_InvalidParameter,
@@ -5826,6 +6315,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                             device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                         }
                         else
@@ -5840,6 +6330,7 @@ private:
                                         parameter.parameter_->name_.c_str(),
                                         program.file_path_.c_str(),
                                         program.file_name_.c_str());
+
                                 if (!invalidate_descriptor && parameter.bound_textures_[j] == nullptr)
                                     continue;    // already up to date
                                 
@@ -5858,6 +6349,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // invalid texture object for shader SRV
                             }
@@ -5876,6 +6368,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                                 device_->CreateShaderResourceView(nullptr, &dummy_srv_desc, descriptors_.getCPUHandle(parameter.descriptor_slot_ + j));
                                 continue;   // out of bounds mip level
                             }
@@ -5905,6 +6398,7 @@ private:
                             parameter.parameter_->name_.c_str(),
                             program.file_path_.c_str(),
                             program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5920,6 +6414,7 @@ private:
                                 parameter.parameter_->name_.c_str(),
                                 program.file_path_.c_str(),
                                 program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5937,9 +6432,11 @@ private:
                     GFX_ASSERT(buffer_handles_.has_handle(gfx_acceleration_structure.bvh_buffer_.handle));
                     Buffer& buffer = buffers_[gfx_acceleration_structure.bvh_buffer_];
                     SetObjectName(buffer, acceleration_structure.name);
+
                     if (buffer_handles_.has_handle(raytracing_scratch_buffer_.handle))
                         transitionResource(buffers_[raytracing_scratch_buffer_], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
                     GFX_ASSERT(*buffer.resource_state_ == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+
                     if (!invalidate_descriptor)
                         break;   // already up to date
                     
@@ -5978,6 +6475,7 @@ private:
                                     parameter.parameter_->name_.c_str(),
                                     program.file_path_.c_str(),
                                     program.file_name_.c_str());
+
                             descriptor_slot = dummy_descriptors_[parameter.type_];
                             freeDescriptor(parameter.descriptor_slot_);
                             parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -5991,6 +6489,7 @@ private:
                                 parameter.parameter_->name_.c_str(),
                                 program.file_path_.c_str(),
                                 program.file_name_.c_str());
+
                             descriptor_slot = dummy_descriptors_[parameter.type_];
                             freeDescriptor(parameter.descriptor_slot_);
                             parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -6004,6 +6503,7 @@ private:
                                 parameter.parameter_->name_.c_str(),
                                 program.file_path_.c_str(),
                                 program.file_name_.c_str());
+
                             descriptor_slot = dummy_descriptors_[parameter.type_];
                             freeDescriptor(parameter.descriptor_slot_);
                             parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -6025,6 +6525,7 @@ private:
                             parameter.parameter_->name_.c_str(),
                             program.file_path_.c_str(),
                             program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -6038,6 +6539,7 @@ private:
                             parameter.parameter_->name_.c_str(),
                             program.file_path_.c_str(),
                             program.file_name_.c_str());
+
                         descriptor_slot = dummy_descriptors_[parameter.type_];
                         freeDescriptor(parameter.descriptor_slot_);
                         parameter.descriptor_slot_ = 0xFFFFFFFFu;
@@ -6164,9 +6666,9 @@ private:
             gfx_texture.dsv_descriptor_slots_[mip_level][slice] = allocateDSVDescriptor();
             if (gfx_texture.dsv_descriptor_slots_[mip_level][slice] == 0xFFFFFFFFu)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to allocate DSV descriptor");
+
             D3D12_RESOURCE_DESC const resource_desc = gfx_texture.resource_->GetDesc();
-            D3D12_DEPTH_STENCIL_VIEW_DESC
-                dsv_desc = {};
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
             dsv_desc.Format = resource_desc.Format;
             if (texture.is2D())
             {
@@ -6196,8 +6698,7 @@ private:
             if (gfx_texture.rtv_descriptor_slots_[mip_level][slice] == 0xFFFFFFFFu)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to allocate RTV descriptor");
             D3D12_RESOURCE_DESC const resource_desc = gfx_texture.resource_->GetDesc();
-            D3D12_RENDER_TARGET_VIEW_DESC
-                rtv_desc = {};
+            D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {};
             rtv_desc.Format = resource_desc.Format;
             if (texture.is2D())
             {
@@ -6235,7 +6736,11 @@ private:
             constant_buffer_size = GFX_ALIGN(constant_buffer_size, 65536);
             destroyBuffer(constant_buffer_pool_[fence_index_]); // release previous memory
             constant_buffer_pool_[fence_index_] = createBuffer(constant_buffer_size, nullptr, kGfxCpuAccess_Write);
-            if (!constant_buffer_pool_[fence_index_]) { data = nullptr; return gpu_addr; }   // out of memory
+            if (!constant_buffer_pool_[fence_index_])
+            {
+                data = nullptr;
+                return gpu_addr;
+            }   // out of memory
             GFX_SNPRINTF(constant_buffer_pool_[fence_index_].name, sizeof(constant_buffer_pool_[fence_index_].name), "gfx_ConstantBufferPool%u", fence_index_);
             constant_buffer = &buffers_[constant_buffer_pool_[fence_index_]];
             SetObjectName(*constant_buffer, constant_buffer_pool_[fence_index_].name);
@@ -6257,6 +6762,7 @@ private:
             raytracing_scratch_buffer_ = createBuffer(scratch_data_size, nullptr, kGfxCpuAccess_None, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             if (!raytracing_scratch_buffer_)
                 return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to create raytracing scratch buffer");
+
             strcpy(raytracing_scratch_buffer_.name, "gfx_RaytracingScratchBuffer");
             Buffer& gfx_buffer = buffers_[raytracing_scratch_buffer_];
             SetObjectName(gfx_buffer, raytracing_scratch_buffer_.name);
@@ -6271,16 +6777,21 @@ private:
             return GFX_SET_ERROR(
                 kGfxResult_InvalidOperation,
                 "Cannot update a raytracing primitive that's pointing to an invalid index buffer object");
+
         if (!buffer_handles_.has_handle(gfx_raytracing_primitive.vertex_buffer_.handle))
             return GFX_SET_ERROR(
                 kGfxResult_InvalidOperation,
                 "Cannot update a raytracing primitive that's pointing to an invalid vertex buffer object");
+
         GFX_ASSERT(gfx_raytracing_primitive.index_stride_ == 0 || gfx_raytracing_primitive.index_buffer_.size / gfx_raytracing_primitive.index_stride_ <= 0xFFFFFFFFull);
         GFX_ASSERT(gfx_raytracing_primitive.vertex_stride_ > 0 && gfx_raytracing_primitive.vertex_buffer_.size / gfx_raytracing_primitive.vertex_stride_ <= 0xFFFFFFFFull);
+
         Buffer* gfx_index_buffer = (gfx_raytracing_primitive.index_stride_ != 0 ? &buffers_[gfx_raytracing_primitive.index_buffer_] : nullptr);
         if (gfx_index_buffer != nullptr) SetObjectName(*gfx_index_buffer, gfx_raytracing_primitive.index_buffer_.name);
+
         Buffer& gfx_vertex_buffer = buffers_[gfx_raytracing_primitive.vertex_buffer_];
         SetObjectName(gfx_vertex_buffer, gfx_raytracing_primitive.vertex_buffer_.name);
+
         GFX_TRY(updateRaytracingPrimitive(raytracing_primitive, gfx_raytracing_primitive));
         if ((gfx_raytracing_primitive.index_stride_ != 0 && gfx_raytracing_primitive.index_buffer_.size == 0) ||
             gfx_raytracing_primitive.vertex_buffer_.size == 0)
@@ -6313,8 +6824,10 @@ private:
 
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO blas_info = {};
         dxr_device_->GetRaytracingAccelerationStructurePrebuildInfo(&blas_inputs, &blas_info);
+
         uint64_t const scratch_data_size = GFX_MAX(blas_info.ScratchDataSizeInBytes, blas_info.UpdateScratchDataSizeInBytes);
         GFX_TRY(allocateRaytracingScratch(scratch_data_size));  // ensure scratch is large enough
+
         uint64_t const bvh_data_size = GFX_ALIGN(blas_info.ResultDataMaxSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
         if (bvh_data_size > gfx_raytracing_primitive.bvh_buffer_.size)
         {
@@ -6326,6 +6839,7 @@ private:
         }
         GFX_ASSERT(buffer_handles_.has_handle(gfx_raytracing_primitive.bvh_buffer_.handle));
         GFX_ASSERT(buffer_handles_.has_handle(raytracing_scratch_buffer_.handle));
+
         Buffer& gfx_buffer = buffers_[gfx_raytracing_primitive.bvh_buffer_];
         Buffer& gfx_scratch_buffer = buffers_[raytracing_scratch_buffer_];
         SetObjectName(gfx_buffer, raytracing_primitive.name);
@@ -6334,6 +6848,7 @@ private:
         transitionResource(buffers_[gfx_raytracing_primitive.vertex_buffer_], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         transitionResource(gfx_scratch_buffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         submitPipelineBarriers();   // ensure scratch is not in use
+
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build_desc = {};
         build_desc.DestAccelerationStructureData = gfx_buffer.resource_->GetGPUVirtualAddress() + gfx_buffer.data_offset_;
         build_desc.Inputs = blas_inputs;
@@ -6352,6 +6867,7 @@ private:
             return GFX_SET_ERROR(
                 kGfxResult_InvalidOperation,
                 "Cannot update a raytracing primitive that's pointing to an invalid acceleration structure object");
+
         AccelerationStructure& gfx_acceleration_structure = acceleration_structures_[acceleration_structure];
         if (gfx_raytracing_primitive.index_ >= (uint32_t)gfx_acceleration_structure.raytracing_primitives_.size() ||
             raytracing_primitive.handle != gfx_acceleration_structure.raytracing_primitives_[gfx_raytracing_primitive.index_].handle)
@@ -6373,9 +6889,12 @@ private:
     {
         GFX_ASSERT(op_type < kOpType_Count);    // should never happen
         GFX_ASSERT(count == nullptr || buffer_handles_.has_handle(count->handle));
+
         uint32_t const key = (data_type << 3) | (op_type << 1) | (count != nullptr ? 1 : 0);
         std::map<uint32_t, ScanKernels>::const_iterator const it = scan_kernels_.find(key);
-        if (it != scan_kernels_.end()) return (*it).second;  // already compiled
+        if (it != scan_kernels_.end())
+            return (*it).second;  // already compiled
+
         char const* data_type_str = nullptr, * identity_str = nullptr;
         switch (data_type)
         {
@@ -6651,7 +7170,9 @@ private:
         GFX_ASSERT(count == nullptr || buffer_handles_.has_handle(count->handle));
         uint32_t const key = ((sort_values ? 1 : 0) << 1) | (count != nullptr ? 1 : 0);
         std::map<uint32_t, SortKernels>::const_iterator const it = sort_kernels_.find(key);
-        if (it != sort_kernels_.end()) return (*it).second;  // already compiled
+        if (it != sort_kernels_.end())
+            return (*it).second;  // already compiled
+
         std::string sort_program_source;
         sort_program_source +=
             "#define NUM_BITS_PER_PASS   4\r\n"
@@ -6883,8 +7404,8 @@ private:
         GFX_ASSERT(buffer_handles_.has_handle(draw_id_buffer_.handle));
         Buffer& gfx_buffer = buffers_[draw_id_buffer_];
         SetObjectName(buffers_[draw_id_buffer_], draw_id_buffer_.name);
-        D3D12_VERTEX_BUFFER_VIEW
-            vbv_desc = {};
+
+        D3D12_VERTEX_BUFFER_VIEW vbv_desc = {};
         vbv_desc.BufferLocation = gfx_buffer.resource_->GetGPUVirtualAddress() + gfx_buffer.data_offset_;
         vbv_desc.SizeInBytes    = (uint32_t)draw_id_buffer_.size;
         vbv_desc.StrideInBytes  = sizeof(uint32_t);
@@ -6894,7 +7415,9 @@ private:
     GfxResult populateDrawIdBuffer(uint32_t args_count)
     {
         uint64_t draw_id_buffer_size = args_count * sizeof(uint32_t);
-        if (draw_id_buffer_size <= draw_id_buffer_.size) return kGfxResult_NoError;
+        if (draw_id_buffer_size <= draw_id_buffer_.size)
+            return kGfxResult_NoError;
+
         GFX_TRY(destroyBuffer(draw_id_buffer_));
         draw_id_buffer_size += ((draw_id_buffer_size + 2) >> 1);
         draw_id_buffer_size = GFX_ALIGN(draw_id_buffer_size, 65536);
@@ -6903,6 +7426,7 @@ private:
         draw_id_buffer_ = createBuffer(draw_id_buffer_size, draw_ids.data(), kGfxCpuAccess_None, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
         if (!draw_id_buffer_)
             return GFX_SET_ERROR(kGfxResult_OutOfMemory, "Unable to create the drawID buffer");
+
         draw_id_buffer_.setName("gfx_DrawIDBuffer");
         bindDrawIdBuffer(); // bind drawID buffer
         return kGfxResult_NoError;
@@ -7207,8 +7731,11 @@ private:
 
         IDxcResult* dxc_result = nullptr;
         dxc_compiler_->Compile(&shader_source, shader_args.data(), (uint32_t)shader_args.size(), dxc_include_handler_, IID_PPV_ARGS(&dxc_result));
-        if (dxc_source) dxc_source->Release();
-        if (!dxc_result) return; // should never happen?
+        if (dxc_source)
+            dxc_source->Release();
+
+        if (!dxc_result)
+            return; // should never happen?
 
         HRESULT result_code = E_FAIL;
         dxc_result->GetStatus(&result_code);
@@ -7229,17 +7756,25 @@ private:
         dxc_result->Release();
         if (!dxc_bytecode || !dxc_reflection)
         {
-            if (dxc_bytecode) dxc_bytecode->Release();
-            if (dxc_reflection) dxc_reflection->Release();
+            if (dxc_bytecode)
+                dxc_bytecode->Release();
+
+            if (dxc_reflection)
+                dxc_reflection->Release();
+
             return; // should never happen?
         }
 
         DxcBuffer reflection_data = {};
         reflection_data.Size = dxc_reflection->GetBufferSize();
-        reflection_data.Ptr = dxc_reflection->GetBufferPointer();
+        reflection_data.Ptr  = dxc_reflection->GetBufferPointer();
         dxc_utils_->CreateReflection(&reflection_data, IID_PPV_ARGS(&shader_reflection));
-        if (shader_reflection) shader_bytecode = dxc_bytecode;
-        if (!shader_reflection) dxc_bytecode->Release();
+        if (shader_reflection)
+            shader_bytecode = dxc_bytecode;
+
+        if (!shader_reflection)
+            dxc_bytecode->Release();
+
         dxc_reflection->Release();
     }
 
@@ -7247,8 +7782,7 @@ private:
         D3D12_RESOURCE_STATES initial_resource_state, D3D12MA::Allocation** allocation, REFIID riid_resource, void** ppv_resource)
     {
         HRESULT result;
-        D3D12_CLEAR_VALUE
-            clear_value = {};
+        D3D12_CLEAR_VALUE clear_value = {};
         clear_value.Format = resource_desc.Format;
         if (IsDepthStencilFormat(resource_desc.Format))
         {
@@ -7394,11 +7928,13 @@ private:
             Texture& texture = textures_.data()[i];
             if (!((texture.flags_ & Texture::kFlag_AutoResize) != 0))
                 continue;   // no need to auto-resize
+
             ID3D12Resource* resource = nullptr;
             D3D12MA::Allocation* allocation = nullptr;
             D3D12_RESOURCE_DESC resource_desc = texture.resource_->GetDesc();
             resource_desc.Width  = window_width;
             resource_desc.Height = window_height;
+
             D3D12MA::ALLOCATION_DESC allocation_desc = {};
             allocation_desc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
             if (createResource(allocation_desc, resource_desc, D3D12_RESOURCE_STATE_COPY_DEST, &allocation, IID_PPV_ARGS(&resource)) != kGfxResult_NoError)
